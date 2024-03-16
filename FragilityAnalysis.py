@@ -653,7 +653,7 @@ class FragilityAnalysis():
 if __name__ == "__main__":
 
     # 层间位移角
-    Model_4StoryMRF = FragilityAnalysis(r'H:/MRF_results/4SMRF_out', EDP_type=1)
+    Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4SMRF_out', EDP_type=1)
     Model_4StoryMRF.calc_IDA(DM_limit=0.15)
     Model_4StoryMRF.frag_curve(
         Damage_State=[0.005, 0.01, 0.02, 0.04],
@@ -663,7 +663,7 @@ if __name__ == "__main__":
     Model_4StoryMRF.exceedance_probability(EDP_val=0.15)
     Model_4StoryMRF.PlotCurves()
     Model_4StoryMRF.Print_data()
-    Model_4StoryMRF.Save_data(r'H:/MRF_results/4SMRF_out_frag')
+    Model_4StoryMRF.Save_data(r'H:\MRF_results\4SMRF_out_frag')
 
     # 层加速度
     # Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4StoryMRF_out', EDP_type=3)

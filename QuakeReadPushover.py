@@ -3,14 +3,14 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
-folder = Path(r'H:/MRF_results/4SMRF_pushover/Pushover')
+folder = Path(r'H:/MRF_results/test/4SMRF')
 
 weight = 0
-time = np.loadtxt(folder/'Time.out')
+time = np.loadtxt(folder/'Pushover'/'Time.out')
 shear = np.zeros(len(time))
-SDR = np.loadtxt(folder/'SDRALL_MF.out')
+SDR = np.loadtxt(folder/'Pushover'/'SDRALL_MF.out')
 for i in range(1, 6):
-    data = np.loadtxt(folder/f'Support{i}.out')
+    data = np.loadtxt(folder/'Pushover'/f'Support{i}.out')
     weight += data[10, 1]
     shear += data[:, 0]
 shear /= -weight

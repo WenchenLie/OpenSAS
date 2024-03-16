@@ -922,10 +922,10 @@ class DataProcessing:
 if __name__ == "__main__":
     
     time0 = time.time()
-    model = DataProcessing(r'H:/MRF_results/4SMRF', gm_suffix='.th')
-    model.set_output_dir(r'H:/MRF_results/4SMRF_out', cover=1)
+    model = DataProcessing(r'H:\MRF_results\4SMRF', gm_suffix='.th')
+    model.set_output_dir(r'H:\MRF_results\4SMRF_out', cover=1)
     model.read_results('mode', 'IDR')
-    model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
+    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     # l1 = pow(6100**2 + 4300**2, 0.5)  # 首层斜撑长度
     # l2 = pow(6100**2 + 4000**2, 0.5)  # 其他层斜撑长度
     # model.read_pushover(H=16300, truss_length=[l1, l2, l2, l2], plot_result=True, is_rocking=False)

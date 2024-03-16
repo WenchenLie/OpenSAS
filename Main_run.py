@@ -7,16 +7,13 @@ from loguru import logger
 可分析工况：时程分析、Pushover、IDA
 
 周期备忘：
-4SMRF:    1.044 0.329 0.178
-
-层质量备忘 (x10^3t)(从1层开始)：
-4SMRF:    0.3264 0.3238 0.3238 0.0818
+4SMRF:    1.242 0.406 0.2
 
 在运行任何新模型前:
 1 - 确保地震动选择及缩放的相关方法中结构的周期正确
 2 - `Output_dir`参数中禁止出现中文路径
 
-OS模型中的单位：kN, mm, 10^3t
+OS模型中的单位：N, mm, t
 """
 
 logger.remove()
@@ -35,13 +32,13 @@ Sa_incr = 0.1g
 tol = 0.01g
 """  # 模型说明
 model = MRF('4SMRF', N=4, notes=notes, logger=logger)
-model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-# model.select_ground_motions(['th6'], suffix='.th')
-T1 = 1.044
-# model.scale_ground_motions('模型信息/DBE谱.txt', method='i', para=(1.049, 5.0), plot=False)  # 只有跑时程需要定义
-model.set_running_parameters(Output_dir='H:/MRF_results/4SMRF', fv_duration=30, display=False)
-# model.run_time_history(print_result=True)
-model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, intensity_measure=1)
+# model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
+model.select_ground_motions(['th6'], suffix='.th')
+T1 = 1.242
+model.scale_ground_motions('模型信息/DBE谱.txt', method='i', para=(T1, 2.0), plot=False)  # 只有跑时程需要定义
+model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF', fv_duration=30, display=False)
+model.run_time_history(print_result=True)
+# model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, intensity_measure=1)
 # model.run_pushover(print_result=True)
 
 
