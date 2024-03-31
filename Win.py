@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .MRF import MRF
 import os
 import re
 import time
@@ -8,6 +12,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
 from ui.Win_running import Ui_Win_running
 
+
 """
 时程分析、增量动力分析、Pushover分析监控窗口
 作者：列文琛
@@ -16,7 +21,7 @@ from ui.Win_running import Ui_Win_running
 
 class MyWin(QDialog):
 
-    def __init__(self, main, running_case: str, IDA_para: tuple, print_result: bool, concurrency: int=None):
+    def __init__(self, main: MRF, running_case: str, IDA_para: tuple, print_result: bool, concurrency: int=None):
         """IDA分析
 
         Args:
@@ -145,7 +150,7 @@ class MyWin(QDialog):
         self.thread_run.start()
 
     def copy_current_tcl_file(self):
-        with open(f'{self.main.cwd}/temp_running_{self.current_gm}.tcl', 'r') as f:
+        with open(f'{self.main.cwd}/temp_running_{self.main.model_name}_{self.current_gm}.tcl', 'r') as f:
             text = f.read()
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
@@ -173,7 +178,7 @@ class MyWin(QDialog):
         self.warning = 1
 
     def quit(self, current_gm):
-        # os.remove(f'{self.main.cwd}/temp_running_{current_gm}.tcl')
+        # os.remove(f'{self.main.cwd}/temp_running_{self.main.model_name}_{current_gm}.tcl')
         pass
 
 
@@ -187,7 +192,7 @@ class WorkerThread(QThread):
     signal_add_log = pyqtSignal(str)  # 增加日志内容
     signal_add_warning = pyqtSignal(str)  # 增加警告内容
 
-    def __init__(self, main, mainWin: MyWin):
+    def __init__(self, main: MRF, mainWin: MyWin):
         super().__init__()
         self.main = main
         self.mainWin = mainWin
@@ -253,7 +258,7 @@ class WorkerThread(QThread):
             text_mpco = f'recorder mpco "$MainFolder/$SubFolder/{gm_name}_{num}.mpco" -N "displacement" "acceleration" "modesOfVibration" -E "material.stress" "material.strain"\n'
             pattern = re.compile(r'# EIGEN VECTORS')
             text = text.replace('# EIGEN VECTORS', text_mpco + '# EIGEN VECTORS')
-        with open(f'{self.main.cwd}/temp_running_{gm_name}.tcl', 'w') as f:
+        with open(f'{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
     def run(self):
@@ -288,7 +293,7 @@ class WorkerThread(QThread):
             self.signal_add_log.emit(f'自由振动时间：{fv_duration}s\n')
             self.signal_add_log.emit(f'缩放系数：{SF:.3f}\n')
             self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-            cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{gm_name}.tcl"'
+            cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
             # 运行分析
             if self.mainWin.print_result:
                 subprocess.call(cmd)
@@ -316,7 +321,7 @@ class WorkerThread(QThread):
                 np.savetxt(f'{self.main.Output_dir}/{gm_name}/Sa.dat', np.array([Sa]))
             with open(f'{self.main.Output_dir}/{gm_name}/isCollapsed.dat', 'w') as f:
                 f.write(str(collapsed))
-            os.remove(f'{self.main.cwd}/temp_running_{self.mainWin.current_gm}.tcl')
+            os.remove(f'{self.main.cwd}/temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             time_gm_end = time.time()
             time_cost = time_gm_end - time_gm_start
             self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
@@ -376,7 +381,7 @@ class WorkerThread(QThread):
                     text_Sa = 'Sa,avg'
                 self.signal_add_log.emit(f'{text_Sa}：{Sa_current}g\n')
                 self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
-                cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{gm_name}.tcl"'
+                cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
                 if self.mainWin.test:
                     time.sleep(1)  # 模拟耗时工作
                 else:
@@ -433,7 +438,7 @@ class WorkerThread(QThread):
                 self.signal_add_warning.emit(time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end)) + '\n')
                 self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
                 self.main.logger.warning(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
-            os.remove(f'{self.main.cwd}/temp_running_{self.mainWin.current_gm}.tcl')
+            os.remove(f'{self.main.cwd}/temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             self.main.logger.success(f'第{idx+1}条地震动计算完成')
         else:
             self.signal_finished.emit(1)
@@ -458,7 +463,7 @@ class WorkerThread(QThread):
         time_gm_start = time.time()
         self.signal_add_log.emit(f'开始：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_start))}\n')
         self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-        cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{gm_name}.tcl"'
+        cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
         # 运行分析
         if self.mainWin.print_result:
             subprocess.call(cmd)
