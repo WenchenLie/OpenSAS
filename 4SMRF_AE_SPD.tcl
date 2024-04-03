@@ -219,6 +219,45 @@ equalDOF 11030204 11030104 1;  equalDOF 11030204 11030304 1;  equalDOF 11030204 
 equalDOF 11040204 11040104 1;  equalDOF 11040204 11040304 1;  equalDOF 11040204 11040404 1;
 equalDOF 11050204 11050104 1;  equalDOF 11050204 11050304 1;  equalDOF 11050204 11050404 1;
 
+# ------------------------------------ SPD ---------------------------------------
+node 120 9150 4000;# node 121 9150 4000;
+node 220 9150 8000;# node 221 9150 8000;
+node 320 9150 12000;# node 321 9150 12000;
+node 420 9150 16000;# node 421 9150 16000;
+
+uniaxialMaterial Steel02 1 450e3 420e3 0.005 18.5 0.91 0.15 0.007 1 0.007 1;  # 0
+uniaxialMaterial Steel02 2 360e3 450e3 0.004 18.5 0.907 0.15 0.01 1 0.01 1;  # 45
+uniaxialMaterial BoucWen 3 0.028 350.66e3 2 0.215 0.215 1 0 0 0;  # 0
+uniaxialMaterial BoucWen 4 0.028 350.66e3 2 0.126 0.126 1 0 0 0;  # 45
+uniaxialMaterial MinMax 11 1 -min -40 -max 40;
+uniaxialMaterial MinMax 22 2 -min -40 -max 40;
+uniaxialMaterial MinMax 33 3 -min -40 -max 40;
+uniaxialMaterial MinMax 44 4 -min -40 -max 40;
+set SPD_tag 22;
+
+# story-1
+element elasticBeamColumn 101 10010200 120 $A_Stiff $E $I_Stiff 1 -release 1;
+element elasticBeamColumn 102 10010300 120 $A_Stiff $E $I_Stiff 1 -release 1;
+element twoNodeLink 104 120 10020208 -mat $SPD_tag -dir 2;
+# story-2
+element elasticBeamColumn 201 11020209 220 $A_Stiff $E $I_Stiff 1 -release 1;
+element elasticBeamColumn 202 11020308 220 $A_Stiff $E $I_Stiff 1 -release 1;
+element twoNodeLink 204 220 10030208 -mat $SPD_tag -dir 2;
+# story-3
+element elasticBeamColumn 301 11030209 320 $A_Stiff $E $I_Stiff 1 -release 1;
+element elasticBeamColumn 302 11030308 320 $A_Stiff $E $I_Stiff 1 -release 1;
+element twoNodeLink 304 320 10040208 -mat $SPD_tag -dir 2;
+# story-4
+element elasticBeamColumn 401 11040209 420 $A_Stiff $E $I_Stiff 1 -release 1;
+element elasticBeamColumn 402 11040308 420 $A_Stiff $E $I_Stiff 1 -release 1;
+element twoNodeLink 404 420 10050208 -mat $SPD_tag -dir 2;
+
+# # recorder Element -file $MainFolder/$SubFolder/SPD1.out -ele 104 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/SPD1.out -ele 104 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/SPD2.out -ele 204 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/SPD3.out -ele 304 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/SPD4.out -ele 404 material 1 stressStrain;
+
 # ---------------------------------- Recorders -----------------------------------
 
 # Mode properties

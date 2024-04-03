@@ -9,6 +9,7 @@ from loguru import logger
 周期备忘：
 4SMRF:          1.242 0.406 0.2
 4SMRF_AE:       1.397 0.436 0.227
+4SMRF_AE_SPD:   0.602 0.202 0.115
 3S_Benchmark:   0.856 0.258 0.118
 4SMRF_AE_BRB1:  0.928 0.309 0.176
 4SMRF_AE_BRB2:  1.074 0.351 0.196
@@ -27,18 +28,18 @@ logger.add(
     level="DEBUG"
 )
 
+
 notes = """
 """  # 模型说明
-
-model = MRF('4SMRF_AE', N=4, notes=notes, logger=logger)
-model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-# model.select_ground_motions(['th6'], suffix='.th') 
-T1 = 0.928
-model.scale_ground_motions('模型信息/DBE_AE.txt', method='b', para=T1, plot=True, SF_code=1.5)  # 只有跑时程需要定义
-model.set_running_parameters(Output_dir='H:/MRF_results/4SMRF_AE_BRB1_thMCE', fv_duration=0, display=False, log_name='日志')
-model.run_time_history(print_result=True)
+model = MRF('4SMRF_AE_SPD', N=4, notes=notes, logger=logger)
+# model.select_ground_motions([f'th{i}' for i in range(1, 7)], suffix='.th')
+model.select_ground_motions(['th1'], suffix='.th') 
+T1 = 1.397
+model.scale_ground_motions('模型信息/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
+model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF_AE', fv_duration=0, display=True, log_name='日志', auto_quit=False)
+# model.run_time_history(print_result=True)
 # model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, intensity_measure=1)
-# model.run_pushover(print_result=True)
+model.run_pushover(print_result=True)
 
 
 
