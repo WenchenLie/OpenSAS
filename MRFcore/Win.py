@@ -216,7 +216,7 @@ class WorkerThread(QThread):
             num (int, optional): 当前地震动的序号
         """
 
-        with open(f'{self.main.cwd}/{self.main.model_name}.tcl', 'r') as f:
+        with open(f'{self.main.cwd}/models/{self.main.model_name}.tcl', 'r') as f:
             text = f.read()
         pattern1 = re.compile(r'(set  EQ )[01](;  # Regular expression anchor)')
         pattern2 = re.compile(r'(set  PO )[01](;  # Regular expression anchor)')

@@ -19,7 +19,7 @@
 # type_          Type of beam-to-column connection
 #                   1: Reduced beam section (RBS)
 #                   2: Other than RBS
-#                   3: Pinned # TODO
+#                   3: Pinned
 # check          If given, print IMK model parameters
 # 
 # ---------------

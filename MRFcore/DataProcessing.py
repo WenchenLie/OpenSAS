@@ -922,8 +922,8 @@ class DataProcessing:
 if __name__ == "__main__":
     
     time0 = time.time()
-    model = DataProcessing(r'H:\MRF_results\4SMRF_AE_SPD0_Steel02', gm_suffix='.th')
-    model.set_output_dir(r'H:\MRF_results\4SMRF_AE_SPD0_Steel02_out', cover=1)
+    model = DataProcessing(r'H:\MRF_results\4SMRF_AE_SPD45_BW', gm_suffix='.th')
+    model.set_output_dir(r'H:\MRF_results\4SMRF_AE_SPD45_BW_out', cover=1)
     model.read_results('mode', 'IDR')
     # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     # l1 = pow(6100**2 + 4300**2, 0.5)  # 首层斜撑长度

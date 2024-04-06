@@ -1,5 +1,5 @@
 import sys
-from MRF import MRF
+from MRFcore.MRF import MRF
 from loguru import logger
 
 
@@ -31,15 +31,15 @@ logger.add(
 
 notes = """
 """  # 模型说明
-model = MRF('4SMRF_AE_SPD', N=4, notes=notes, logger=logger)
+model = MRF('4SMRF_AE', N=4, notes=notes, logger=logger)
 # model.select_ground_motions([f'th{i}' for i in range(1, 7)], suffix='.th')
 model.select_ground_motions(['th1'], suffix='.th') 
 T1 = 1.397
 model.scale_ground_motions('模型信息/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
 model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF_AE', fv_duration=0, display=True, log_name='日志', auto_quit=False)
-# model.run_time_history(print_result=True)
+model.run_time_history(print_result=True)
 # model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, intensity_measure=1)
-model.run_pushover(print_result=True)
+# model.run_pushover(print_result=True)
 
 
 

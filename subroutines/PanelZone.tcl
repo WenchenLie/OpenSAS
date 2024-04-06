@@ -58,10 +58,10 @@ proc PanelZone {Floor Axis X Y E mu fy A_stiff I_stiff d_col d_beam tp tf bf tra
     } elseif {$type_ == 2} {
         node $node_B $X [expr $Y-0.5*$d_beam];
         node $node_R [expr $X+0.5*$d_col] $Y;
-        if {$type_ != "L" && $type_ != "LT"} {
+        if {$position != "L" && $position != "LT"} {
             node $node_L [expr $X-0.5*$d_col] $Y;
         }
-        if {$type_ != "T" && $type_ != "LT" && $type_ != "RT"} {
+        if {$position != "T" && $position != "LT" && $position != "RT"} {
             node $node_T $X [expr $Y+0.5*$d_beam];
         }
     }
@@ -105,10 +105,10 @@ proc PanelZone {Floor Axis X Y E mu fy A_stiff I_stiff d_col d_beam tp tf bf tra
     } elseif {$type_ == 2} {
         element elasticBeamColumn $ele_B $node_C $node_B $A_stiff $E $I_stiff $transfTag;
         element elasticBeamColumn $ele_R $node_C $node_R $A_stiff $E $I_stiff $transfTag;
-        if {$type_ != "L" && $type_ != "LT"} {
+        if {$position != "L" && $position != "LT"} {
             element elasticBeamColumn $ele_L $node_C $node_L $A_stiff $E $I_stiff $transfTag;
         }
-        if {$type_ != "T" && $type_ != "LT" && $type_ != "RT"} {
+        if {$position != "T" && $position != "LT" && $position != "RT"} {
             element elasticBeamColumn $ele_T $node_C $node_T $A_stiff $E $I_stiff $transfTag;
         }
     }

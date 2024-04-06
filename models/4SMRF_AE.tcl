@@ -13,8 +13,8 @@ set global MaxRunTime;
 set MaxRunTime 600.0;
 set StartTime [clock seconds];
 set RunTime 0.0;
-set  EQ 1;  # Regular expression anchor
-set  PO 0;  # Regular expression anchor
+set  EQ 0;  # Regular expression anchor
+set  PO 1;  # Regular expression anchor
 set  ShowAnimation 1;
 
 # Ground motion information
@@ -25,10 +25,13 @@ set GMdt 0.01;
 set GMpoints 5590;
 set GMduration 55.89;
 set FVduration 30;
-set EqSF 2.0;
-set GMFile "GMs/$GMname.th";
+set EqSF 4.0;
+set GMFile "F:/MRF/GMs/$GMname.th";
+set subroutines "F:/MRF/subroutines";
+set temp "F:/MRF/temp";  # TODO
 
 # Sourcing subroutines
+cd $subroutines;  # TODO
 source DisplayModel3D.tcl;
 source DisplayPlane.tcl;
 source Spring_Zero.tcl;
@@ -38,6 +41,8 @@ source DynamicAnalysisCollapseSolverX.tcl;
 source PanelZone.tcl
 source BeamHinge.tcl
 source ColumnHinge.tcl
+source TimeHistorySolver.tcl;  # TODO
+
 
 # Results folders
 file mkdir $MainFolder;
@@ -73,7 +78,8 @@ set Axis4 18300.0;
 set Axis5 24400.0;
 
 set HBuilding 16300.0;
-variable HBuilding 16300.0;
+# TODO
+set story_heights [list 4300. 4000. 4000. 4000.];  # TODO
 
 
 # ------------------------------------ Nodes -------------------------------------
@@ -416,7 +422,11 @@ if {$EQ == 1} {
     set NumSteps [expr round(($GMduration + $FVduration)/$GMdt)];
     set totTime [expr $GMdt*$NumSteps];
     set dtAnalysis [expr 1.0*$GMdt];
-    DynamicAnalysisCollapseSolverX $GMdt $dtAnalysis $totTime $NStory 0.15 $MF_FloorNodes $MF_FloorNodes 4300.0 4000.0 1 $StartTime $MaxRunTime $GMname;
+    set CollapseDrift 0.1
+    set MaxAnalysisDrift 0.5
+    set maxRunTime 600.0
+    set result [TimeHistorySolver $GMdt $GMduration $story_heights $MF_FloorNodes $CollapseDrift $MaxAnalysisDrift $GMname $maxRunTime $temp];  # TODO
+
 
 }
 

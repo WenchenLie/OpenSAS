@@ -10,7 +10,7 @@ from pathlib import Path
 from loguru import logger
 
 import func
-from Win import MyWin
+from .Win import MyWin
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
@@ -27,6 +27,8 @@ class MRF:
     # (2) 导入的地震动、反应谱单位均默认为g
 
     cwd = str(Path.cwd()).replace('\\', '/')
+    # cwd
+    dir_gm = Path()
 
     def __init__(self, model_name: str, N: int, notes='', logger=logger):
         """实例化分析模型
@@ -37,9 +39,10 @@ class MRF:
             notes (str, optional): 模型描述，默认为''  
             logger (logger, optional): 在主函数中定义的日志对象
         """
+        print(self.cwd)
         self.logger = logger
         self.model_name = model_name  # 模型名
-        if not Path(Path(MRF.cwd) / (model_name+'.tcl')).exists():
+        if not Path(Path(MRF.cwd) / 'models' / (model_name+'.tcl')).exists():
             logger.error(f'无法找到模型`{model_name}.tcl`！')
             raise ValueError('【Error】无法找到模型！')
         self.N = N  # 层数
