@@ -361,7 +361,7 @@ class WorkerThread(QThread):
                 np.savetxt(self.main.Output_dir / gm_name / 'Sa.dat', np.array([Sa]))
             with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
                 f.write(str(collapsed))
-            # os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')  # TODO
+            os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             time_gm_end = time.time()
             time_cost = time_gm_end - time_gm_start
             self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')

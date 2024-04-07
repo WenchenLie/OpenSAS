@@ -405,7 +405,6 @@ class MRF:
             OS_terminal = 'OpenSees340_mpco'
             logger.warning('当输出mpco时将默认使用OpenSees340_mpco.exe求解器')
         self.OS_path = self.dir_terminal / f'{OS_terminal}.exe'
-        # self.tcl_path = self.dir_temp / 'temp_running.tcl'  # TODO
         self.fv_duration = fv_duration
         
 
