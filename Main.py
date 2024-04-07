@@ -1,6 +1,4 @@
-import sys
 from MRFcore.MRF import MRF
-from loguru import logger
 
 
 """
@@ -21,25 +19,20 @@ from loguru import logger
 OS模型中的单位：N, mm, t
 """
 
-logger.remove()
-logger.add(
-    sink=sys.stdout,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
-    level="DEBUG"
-)
 
-
-notes = """
-"""  # 模型说明
-model = MRF('4SMRF_AE', N=4, notes=notes, logger=logger)
-# model.select_ground_motions([f'th{i}' for i in range(1, 7)], suffix='.th')
-model.select_ground_motions(['th1'], suffix='.th') 
-T1 = 1.397
-model.scale_ground_motions('模型信息/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
-model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF_AE', fv_duration=0, display=True, log_name='日志', auto_quit=False)
-model.run_time_history(print_result=True)
-# model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, intensity_measure=1)
-# model.run_pushover(print_result=True)
+if __name__ == "__main__":
+    
+    notes = """
+    """  # 模型说明
+    model = MRF('4SMRF_AE', N=4, notes=notes)
+    # model.select_ground_motions([f'th{i}' for i in range(1, 7)], suffix='.th')
+    model.select_ground_motions(['th2'], suffix='.th') 
+    T1 = 1.397
+    model.scale_ground_motions('模型信息/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
+    model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF_AE', fv_duration=0, display=True, log_name='日志', auto_quit=False)
+    # model.run_time_history(print_result=True)
+    # model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=5, intensity_measure=1)
+    model.run_pushover(print_result=True)
 
 
 

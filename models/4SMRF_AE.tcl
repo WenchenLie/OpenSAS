@@ -10,25 +10,26 @@ model basic -ndm 2 -ndf 3;
 set global RunTime;
 set global StartTime;
 set global MaxRunTime;
-set MaxRunTime 600.0;
+set MaxRunTime 600.0;  # $$$
 set StartTime [clock seconds];
 set RunTime 0.0;
-set  EQ 0;  # Regular expression anchor
-set  PO 1;  # Regular expression anchor
-set  ShowAnimation 1;
+set EQ 0;  # $$$ # TODO
+set PO 1;  # $$$ # TODO
+set ShowAnimation 1;  # $$$ # TODO
+set MPCO 1;  # $$$ # TODO
 
 # Ground motion information
-set MainFolder "H:/MRF_results/test/4SMRF";
-set GMname "th5";
-set SubFolder "th5";
-set GMdt 0.01;
-set GMpoints 5590;
-set GMduration 55.89;
-set FVduration 30;
-set EqSF 4.0;
-set GMFile "F:/MRF/GMs/$GMname.th";
-set subroutines "F:/MRF/subroutines";
-set temp "F:/MRF/temp";  # TODO
+set MainFolder "H:/MRF_results/test/4SMRF";  # $$$
+set GMname "th5";  # $$$
+set SubFolder "th5";  # $$$
+set GMdt 0.01;  # $$$
+set GMpoints 5590;  # $$$
+set GMduration 55.89;  # $$$
+set FVduration 30;  # $$$
+set EqSF 4.0;  # $$$
+set GMFile "F:/MRF/GMs/$GMname.th";  # $$$
+set subroutines "F:/MRF/subroutines";  # $$$
+set temp "F:/MRF/temp";  # $$$ # TODO
 
 # Sourcing subroutines
 cd $subroutines;  # TODO
@@ -36,8 +37,8 @@ source DisplayModel3D.tcl;
 source DisplayPlane.tcl;
 source Spring_Zero.tcl;
 source Spring_Rigid.tcl;
-source ConstructPanel_Rectangle.tcl;
-source DynamicAnalysisCollapseSolverX.tcl;
+# source ConstructPanel_Rectangle.tcl;
+# source DynamicAnalysisCollapseSolverX.tcl;  # TODO
 source PanelZone.tcl
 source BeamHinge.tcl
 source ColumnHinge.tcl
@@ -321,6 +322,11 @@ recorder Element -file $MainFolder/$SubFolder/PZ31_D.out -ele 11030100 deformati
 recorder Element -file $MainFolder/$SubFolder/PZ41_D.out -ele 11040100 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ42_D.out -ele 11040200 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ43_D.out -ele 11040300 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ44_D.out -ele 11040400 deformation;
 recorder Element -file $MainFolder/$SubFolder/PZ51_D.out -ele 11050100 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ52_D.out -ele 11050200 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ53_D.out -ele 11050300 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ54_D.out -ele 11050400 deformation;
 
+# MPCO recorder
+if {$MPCO == 1} {
+    recorder mpco $MainFolder$SubFolder/result.mpco -N displacement acceleration modesOfVibration -E material.stress material.strain
+}
+
 # ------------------------------------- Mass -------------------------------------
 
 # Moment frame mass
@@ -426,7 +432,10 @@ if {$EQ == 1} {
     set MaxAnalysisDrift 0.5
     set maxRunTime 600.0
     set result [TimeHistorySolver $GMdt $GMduration $story_heights $MF_FloorNodes $CollapseDrift $MaxAnalysisDrift $GMname $maxRunTime $temp];  # TODO
-
+    set status [lindex $result 0];
+    set controlled_time [lindex $result 1];
+    puts "Running status: $status";  # TODO
+    puts "Controlled time: $controlled_time";  # TODO
 
 }
 

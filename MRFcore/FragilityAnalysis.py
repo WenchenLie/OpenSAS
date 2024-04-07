@@ -2,6 +2,7 @@ import numpy as np
 import os
 import sys
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 from scipy.stats import norm
 import openpyxl as px
 from pathlib import Path
@@ -9,6 +10,9 @@ from loguru import logger
 from wsection import WSection
 import func
 
+"""
+最后更新：2024-04-07，优化画图代码，增加保存结果图像文件
+"""
 
 logger.remove()
 logger.add(
@@ -450,70 +454,71 @@ class FragilityAnalysis():
 
     def PlotCurves(self, plot_IDA_idx=None):
         # 画图
+        self.fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(18, 10))
         # 1 IDA曲线
-        plt.subplot(231)
+        ax: Axes = axes[0, 0]
         for i, (x, y) in enumerate(zip(self.IDA_x, self.IDA_y)):
             if plot_IDA_idx == i:
-                plt.plot(x, y, '-o', color='blue', markersize=6, label=f'idx={i}', zorder=9999)
+                ax.plot(x, y, '-o', color='blue', markersize=6, label=f'idx={i}', zorder=9999)
             else:
-                plt.plot(x, y, '-o', color='grey', markersize=4)
-        plt.plot(self.pct_x, self.pct_16, label='16%', color='orange', linewidth=3, linestyle='--')
-        plt.plot(self.pct_x, self.pct_50, label='50%', color='red', linewidth=3)
-        plt.plot(self.pct_x, self.pct_84, label='84%', color='green', linewidth=3, linestyle='--')
-        plt.title('IDA curves')
-        plt.legend()
-        plt.xlim(*self.IDA_range)
-        plt.ylim(0)
-        plt.xlabel('EDP')
-        plt.ylabel('IM')
+                ax.plot(x, y, '-o', color='grey', markersize=4)
+        ax.plot(self.pct_x, self.pct_16, label='16%', color='orange', linewidth=3, linestyle='--')
+        ax.plot(self.pct_x, self.pct_50, label='50%', color='red', linewidth=3)
+        ax.plot(self.pct_x, self.pct_84, label='84%', color='green', linewidth=3, linestyle='--')
+        ax.set_title('IDA curves')
+        ax.legend()
+        ax.set_xlim(*self.IDA_range)
+        ax.set_ylim(0)
+        ax.set_xlabel('EDP')
+        ax.set_ylabel('IM')
         # 2 EDP-IM (指数)
-        plt.subplot(232)
-        plt.plot(self.IM, self.DM, 'o')
-        plt.plot(self.IM_fit, self.DM_fit, 'red', label=f'EDP = exp({self.A:.4f} + {self.B:.4f} * ln(IM))')
-        plt.title('DM - IM curve')
-        plt.xlabel('IM')
-        plt.ylabel('EDP')
-        plt.legend()
+        ax: Axes = axes[0, 1]
+        ax.plot(self.IM, self.DM, 'o')
+        ax.plot(self.IM_fit, self.DM_fit, 'red', label=f'EDP = exp({self.A:.4f} + {self.B:.4f} * ln(IM))')
+        ax.set_title('DM - IM curve')
+        ax.set_xlabel('IM')
+        ax.set_ylabel('EDP')
+        ax.legend()
         # 3 ln(EDP)-ln(IM) (线性)
-        plt.subplot(233)
-        plt.plot(np.log(self.IM), np.log(self.DM), 'o')
-        plt.plot(np.log(self.IM_fit), np.log(self.DM_fit), 'red', label=f'ln(EDP) = {self.A:.4f} + {self.B:.4f} * ln(IM)')
-        plt.title('ln(DM) - ln(IM) curve')
-        plt.xlabel('ln(IM)')
-        plt.ylabel('ln(EDP)')
-        plt.legend()
+        ax: Axes = axes[0, 2]
+        ax.plot(np.log(self.IM), np.log(self.DM), 'o')
+        ax.plot(np.log(self.IM_fit), np.log(self.DM_fit), 'red', label=f'ln(EDP) = {self.A:.4f} + {self.B:.4f} * ln(IM)')
+        ax.set_xlabel('ln(IM)')
+        ax.set_ylabel('ln(EDP)')
+        ax.legend()
         # 4 易损性曲线
-        plt.subplot(234)
+        ax: Axes = axes[1, 0]
         for i, y in enumerate(self.y_frag):
-            plt.plot(self.x_frag, y, label=self.label[i])
-            plt.legend()
-        plt.title('Fragility curves')
-        plt.xlim(0)
-        plt.ylim(0, 1)
-        plt.xlabel('Sa(T1)')
-        plt.ylabel('Exceeding probability')
+            ax.plot(self.x_frag, y, label=self.label[i])
+            ax.legend()
+        ax.legend('Fragility curves')
+        ax.set_xlim(0)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel('Sa(T1)')
+        ax.set_ylabel('Exceeding probability')
         # 5 倒塌易损性曲线
+        ax: Axes = axes[1, 1]
         if self.Calc_collapse:
-            plt.subplot(235)
-            plt.plot(self.x_clps_frag_fit, self.y_clps_frag_fit)
-            plt.plot(self.x_clps_frag_real, self.y_clps_frag_real, 'o', color='red')
-            plt.title('Collapse fragility curve')
-            plt.xlim(0)
-            plt.ylim(0)
-            plt.xlabel('IM')
-            plt.ylabel('Collapse probability')
+            ax.plot(self.x_clps_frag_fit, self.y_clps_frag_fit)
+            ax.plot(self.x_clps_frag_real, self.y_clps_frag_real, 'o', color='red')
+            ax.set_title('Collapse fragility curve')
+            ax.set_xlim(0)
+            ax.set_ylim(0)
+            ax.set_xlabel('IM')
+            ax.set_ylabel('Collapse probability')
         # 6 EDP超越概率
+        ax: Axes = axes[1, 2]
         if self.Calc_p:
-            plt.subplot(236)
-            plt.plot(self.x_EDP_frag_fit, self.y_EDP_frag_fit)
-            plt.plot(self.x_EDP_frag_real, self.y_EDP_frag_real, 'o', color='red')
-            plt.title(f'Exceedance probability of {self.EDP_val}')
-            plt.xlim(0)
-            plt.ylim(0)
-            plt.xlabel('IM')
-            plt.ylabel('Exceedance probability')
+            ax.plot(self.x_EDP_frag_fit, self.y_EDP_frag_fit)
+            ax.plot(self.x_EDP_frag_real, self.y_EDP_frag_real, 'o', color='red')
+            ax.set_title(f'Exceedance probability of {self.EDP_val}')
+            ax.set_xlim(0)
+            ax.set_ylim(0)
+            ax.set_xlabel('IM')
+            ax.set_ylabel('Exceedance probability')
+        # 画图
+        plt.tight_layout()
         plt.show()
-
 
 
     def Print_data(self):
@@ -546,6 +551,7 @@ class FragilityAnalysis():
         output_path = Path(output_path)
         if not Path.exists(output_path):
             Path.mkdir(output_path)
+        self.fig.savefig(output_path / 'results.png', dpi=600)
         EDP_name = self.EDP_name[self.EDP_type]
         # IDA曲线
         wb = px.Workbook()
@@ -653,7 +659,7 @@ class FragilityAnalysis():
 if __name__ == "__main__":
 
     # 层间位移角
-    Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4SMRF_AE_SPD45_BW_out', EDP_type=1)
+    Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4SMRF_AE_noSPD_out', EDP_type=1)
     Model_4StoryMRF.calc_IDA(DM_limit=0.1)
     Model_4StoryMRF.frag_curve(
         Damage_State=[0.005, 0.01, 0.02, 0.04],
@@ -663,7 +669,7 @@ if __name__ == "__main__":
     Model_4StoryMRF.exceedance_probability(EDP_val=0.15)
     Model_4StoryMRF.PlotCurves()
     Model_4StoryMRF.Print_data()
-    Model_4StoryMRF.Save_data(r'H:\MRF_results\4SMRF_AE_SPD45_BW_out_frag')
+    Model_4StoryMRF.Save_data(r'H:\MRF_results\4SMRF_AE_noSPD_out_frag')
 
     # 层加速度
     # Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4StoryMRF_out', EDP_type=3)

@@ -12,9 +12,8 @@ def TimeHistorySolver(
     Args:
         dt_init (float): Ground motion step
         duration (float): Ground motion duration
-        NStory (int): Number of stories
         story_heights (list): Heights of story
-        ctrl_nodes (list): Control nodes of story
+        ctrl_nodes (list): Controlled nodes of story
         CollapseDrift (float): Drift ratio that sign the frame as collapse
         MaxAnalysisDrift (float): Drift ratio that analysis termination
         GMname (str): Ground motion name

@@ -3,34 +3,47 @@ import sys
 import shutil
 from pathlib import Path
 from math import pi
+from typing import Literal
 
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from loguru import logger
 
-import func
 from .Win import MyWin
+from .Spectrum import Spectrum
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
 """
 多层钢框架、混凝土框架OpenSees模型分析类
 作者：列文琛
-最后更新：2024.03.10
+更新：2024.03.10
+更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
 """
 
+logger.remove()
+logger.add(
+    sink=sys.stdout,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
+    level="DEBUG"
+)
 
 class MRF:
     # 注：
     # (1) 代码仅支持Windows系统
     # (2) 导入的地震动、反应谱单位均默认为g
 
-    cwd = str(Path.cwd()).replace('\\', '/')
-    # cwd
-    dir_gm = Path()
+    # cwd = str(Path.cwd()).replace('\\', '/')
+    cwd = Path().cwd()
+    dir_gm = cwd / 'GMs'
+    dir_model = cwd / 'models'
+    dir_temp = cwd / 'temp'
+    dir_log = cwd / 'log'
+    dir_terminal = cwd / 'OS_terminal'
+    dir_subroutines = cwd / 'subroutines'
 
-    def __init__(self, model_name: str, N: int, notes='', logger=logger):
+    def __init__(self, model_name: str, N: int, notes=''):
         """实例化分析模型
 
         Args:
@@ -39,10 +52,10 @@ class MRF:
             notes (str, optional): 模型描述，默认为''  
             logger (logger, optional): 在主函数中定义的日志对象
         """
-        print(self.cwd)
+        print(self.dir_model)
         self.logger = logger
         self.model_name = model_name  # 模型名
-        if not Path(Path(MRF.cwd) / 'models' / (model_name+'.tcl')).exists():
+        if not (self.dir_model / (model_name+'.tcl')).exists():
             logger.error(f'无法找到模型`{model_name}.tcl`！')
             raise ValueError('【Error】无法找到模型！')
         self.N = N  # 层数
@@ -80,7 +93,7 @@ class MRF:
         """
         self.suffix = suffix
         self.GM_names = GMs
-        GM_info = np.loadtxt(f'{self.cwd}/GMs/GM_info.txt', dtype=str)
+        GM_info = np.loadtxt(self.dir_gm / 'GM_info.txt', dtype=str)
         dt_dict = dict()
         for i in range(len(GM_info)):
             name = GM_info[i, 0]
@@ -88,7 +101,7 @@ class MRF:
             dt_dict[name] = dt
         for name in self.GM_names:
             self.GM_dts.append(dt_dict[name])
-            th = np.loadtxt(f'{self.cwd}/GMs/{name}{suffix}')
+            th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
             self.GM_NPTS.append(len(th))
             self.GM_durations.append(round((len(th) - 1) * dt_dict[name], 6))
         self.GM_N = len(self.GM_names)
@@ -175,8 +188,8 @@ class MRF:
         is_print = True
         for idx, gm_name in enumerate(self.GM_names):
             print(f'正在缩放地震动...({idx+1}/{self.GM_N})     \r', end='')
-            th = np.loadtxt(f'{self.cwd}/GMs/{gm_name}{self.suffix}')
-            RSA, RSV, RSD = func.Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
+            th = np.loadtxt(self.dir_gm / f'{gm_name}{self.suffix}')
+            RSA, RSV, RSD = Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
             self.GM_RSA[idx] = RSA
             self.GM_RSV[idx] = RSV
             self.GM_RSD[idx] = RSD    
@@ -238,7 +251,7 @@ class MRF:
             self.scaled_GM_RSD[idx] = RSD * SF
             self.GM_SF.append(SF)
             if save_SF:
-                np.savetxt(f'{self.cwd}/temp/GM_SFs.txt', self.GM_SF)  # 保存缩放系数
+                np.savetxt(self.dir_temp / 'GM_SFs.txt', self.GM_SF)  # 保存缩放系数
         if save_unscaled_spec:
             data_RSA = np.zeros((len(T), self.GM_N + 1))
             data_RSV = np.zeros((len(T), self.GM_N + 1))
@@ -260,12 +273,12 @@ class MRF:
                 pct_D[i, 0] = np.percentile(data_RSD[i, 1:], 16)
                 pct_D[i, 1] = np.percentile(data_RSD[i, 1:], 50)
                 pct_D[i, 2] = np.percentile(data_RSD[i, 1:], 84)
-            np.savetxt(f'{self.cwd}/temp/Unscaled_RSA.txt', data_RSA, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Unscaled_RSV.txt', data_RSV, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Unscaled_RSD.txt', data_RSD, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Unscaled_RSA_pct.txt', pct_A, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Unscaled_RSV_pct.txt', pct_V, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Unscaled_RSD_pct.txt', pct_D, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSA.txt', data_RSA, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSV.txt', data_RSV, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSD.txt', data_RSD, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSA_pct.txt', pct_A, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSV_pct.txt', pct_V, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSD_pct.txt', pct_D, fmt='%.5f')
             self.logger.info(f'已保存未缩放反应谱至temp文件夹')
         if save_scaled_spec:
             data_RSA = np.zeros((len(T), self.GM_N + 1))
@@ -288,12 +301,12 @@ class MRF:
                 pct_D[i, 0] = np.percentile(data_RSD[i, 1:], 16)
                 pct_D[i, 1] = np.percentile(data_RSD[i, 1:], 50)
                 pct_D[i, 2] = np.percentile(data_RSD[i, 1:], 84)
-            np.savetxt(f'{self.cwd}/temp/Scaled_RSA.txt', data_RSA, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Scaled_RSV.txt', data_RSV, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Scaled_RSD.txt', data_RSD, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Scaled_RSA_pct.txt', pct_A, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Scaled_RSV_pct.txt', pct_V, fmt='%.5f')
-            np.savetxt(f'{self.cwd}/temp/Scaled_RSD_pct.txt', pct_D, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSA.txt', data_RSA, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSV.txt', data_RSV, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSD.txt', data_RSD, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSA_pct.txt', pct_A, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSV_pct.txt', pct_V, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSD_pct.txt', pct_D, fmt='%.5f')
             self.logger.info(f'已保存缩放反应谱至temp文件夹')
         plt.subplot(131)
         if method == 'a':
@@ -336,8 +349,6 @@ class MRF:
     def _check_Output_dir(self):
         # 判断输出文件夹是否存在
         if os.path.exists(self.Output_dir):
-            # plt.plot([1, 2], [1, 2])  # 利用matplotlib创建QApplication，否则QMessageBox无法运行
-            # app = QApplication(sys.argv)
             res1 = QMessageBox.question(None, '警告', f'{self.Output_dir}已存在，是否删除？')
             if res1 == QMessageBox.Yes:
                 shutil.rmtree(self.Output_dir)
@@ -354,9 +365,10 @@ class MRF:
             os.makedirs(self.Output_dir)
             return True
     
-    def set_running_parameters(self, Output_dir: str=None, OS_terminal: str='OpenSees351',
-                               fv_duration=0.0, display=True, mpco=False, log_name='日志',
-                               auto_quit: bool=False):
+    def set_running_parameters(
+            self, Output_dir: str | Path=None, OS_terminal: str='OpenSees351',
+            fv_duration=0.0, display=True, mpco=False, log_name='日志',
+            maxRunTime: float=600, auto_quit: bool=False):
         """设置运行参数
 
         Args:
@@ -368,14 +380,16 @@ class MRF:
             display (bool): 是否显示运行时结构的实时变形图  
             mpco (bool): 是否创建mpco文件，用于被STKO读取后处理  
             log_name (str): 日志文件名  
+            maxRunTime (float): 最大允许运行时间(s)，默认600s  
             auto_quit (bool): 计算完成时是否自动关闭监控窗口，默认False
         """
         self.display = display
         self.mpco = mpco
         self.log_name = log_name
+        self.maxRunTime = maxRunTime
         self.auto_quit = auto_quit
-        Output_dir = Output_dir.replace('\\', '/')
         if Output_dir:
+            Output_dir = Path(Output_dir).absolute()
             self.Output_dir = Output_dir
         if not self._check_Output_dir():
             self.do_not_run = True
@@ -390,8 +404,8 @@ class MRF:
         if mpco:
             OS_terminal = 'OpenSees340_mpco'
             logger.warning('当输出mpco时将默认使用OpenSees340_mpco.exe求解器')
-        self.OS_path = f'{self.cwd}/OS_terminal/{OS_terminal}.exe'
-        self.tcl_path = f'{self.cwd}/temp_running.tcl'
+        self.OS_path = self.dir_terminal / f'{OS_terminal}.exe'
+        # self.tcl_path = self.dir_temp / 'temp_running.tcl'  # TODO
         self.fv_duration = fv_duration
         
 
@@ -412,8 +426,10 @@ class MRF:
         self._exec_win(running_case='th', IDA_para=None, print_result=print_result)
 
 
-    def run_IDA(self, T0: float, Sa0: float, Sa_incr: float, tol: float, max_ana=30, test=False,
-                intensity_measure=1, T_range: tuple=None, print_result=False, concurrency:int=None):
+    def run_IDA(
+            self, T0: float, Sa0: float, Sa_incr: float, tol: float, max_ana=30, test=False,
+            intensity_measure: Literal[1, 2]=1, T_range: tuple=None, print_result=False,
+            trace_collapse: bool=True, concurrency:int=None):
         """IDA分析
 
         Args:
@@ -429,20 +445,22 @@ class MRF:
             * 2: Sa,avg, 给定周期范围内的简单几何平方根  \n
             T_range (tuple, optional): 周期范围，默认None，当`intensity_measure`为2时生效  
             print_result (bool, optional): 是否打印opensees终端输出的结果，默认不打印  
+            trace_collapse (bool): 是否追踪倒塌（若否则不动态调整地震动强度指标）  
             concurrency (int): 同时并发运行的数量(仅IDA适用)，默认None(该功能暂未写好)  
             如果为None，则在VsCode终端上运行，否则则在新的系统终端运行  
         """
         if self.do_not_run:
             return
         self.logger.info('开始进行IDA')
+        self.trace_collapse = trace_collapse
         # 计算无缩放反应谱
         T = np.arange(0, 6.02, 0.01)
         self.T = T
         self.GM_RSA, self.GM_RSV, self.GM_RSD = np.zeros((self.GM_N, len(T))), np.zeros((self.GM_N, len(T))), np.zeros((self.GM_N, len(T)))
         for idx in range(self.GM_N):
             print(f'正在计算地震动反应谱...({idx+1}/{self.GM_N})     \r', end='')
-            th = np.loadtxt(f'{self.cwd}/GMs/{self.GM_names[idx]}{self.suffix}')
-            RSA, RSV, RSD = func.Spectrum(th, self.GM_dts[idx], T)
+            th = np.loadtxt(self.dir_gm / f'{self.GM_names[idx]}{self.suffix}')
+            RSA, RSV, RSD = Spectrum(th, self.GM_dts[idx], T)
             self.GM_RSA[idx] = RSA
             self.GM_RSV[idx] = RSV
             self.GM_RSD[idx] = RSD
@@ -468,10 +486,10 @@ class MRF:
         self._exec_win(running_case='pushover', IDA_para=IDA_para, print_result=print_result)
 
     def _exec_win(self, running_case: str, IDA_para: tuple, print_result: bool, concurrency=None):
-        if not Path(Path(self.cwd)/'temp').exists():
-            os.mkdir(Path(self.cwd)/'temp')
-        if not Path(Path(self.cwd)/'log').exists():
-            os.mkdir(Path(self.cwd)/'log')
+        if not self.dir_temp.exists():
+            os.makedirs(self.dir_temp)
+        if not self.dir_log.exists():
+            os.makedirs(self.dir_log)
         myshow = MyWin(self, running_case, IDA_para=IDA_para, print_result=print_result, concurrency=None)
         myshow.show()
         self.app.exec_()
@@ -539,28 +557,4 @@ class MRF:
 
 
 
-if __name__ == "__main__":
-
-
-#     logger.remove()
-#     logger.add(
-#         sink=sys.stdout,
-#         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
-#         level="DEBUG"
-#     )
-    
-
-#     notes = """4层钢框架，考虑楼板组合效应
-# Skiadopoulos, Andronikos, and Dimitrios G. Lignos. "Seismic demands of steel moment resisting frames with inelastic beam‐to‐column web panel zones." Earthquake Engineering & Structural Dynamics 51.7 (2022): 1591-1609.
-# https://www.doi.org/10.5281/zenodo.5962407"""  # 模型说明
-#     model = MRF('4StoryMRF', N=4, notes=notes, logger=logger)
-#     model.select_ground_motions([f'th{i+1}' for i in range(5)], suffix='.th')
-#     # model.scale_ground_motions('模型信息/DBE谱.txt', method='d', para=1.3, save=True, plot=False)  # 只有跑时程需要定义
-#     model.set_running_parameters(Output_dir='H:/MRF_results/test_IDA2', fv_duration=30)
-#     # model.run_time_history(print_result=True)
-#     model.run_IDA(0.963, 0.1, 0.02, 0.01, max_ana=30)
-
-    pass
-    
-    
     

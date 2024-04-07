@@ -1,3 +1,24 @@
+# -------------------------- Time history analysis --------------------------
+#
+# Args (16):
+# ---------------
+# dt_init           Ground motion step
+# duration          Ground motion duration
+# story_heights     Heights of story
+# ctrl_nodes        Controlled nodes of story
+# CollapseDrift     Drift ratio that sign the frame as collapse
+# MaxAnalysisDrift  Drift ratio that analysis termination
+# GMname            Ground motion name
+# maxRunTime        Maximum run time (second)
+# temp              Temp folder
+# min_factor        Factor to control the adaptive time step
+# max_factor        Factor to control the adaptive time step
+
+# ---------------
+# Written by: Wenchen Lie, Guangzhou University, China
+# Date: 2024-04-07
+# --------------------------------------------------------------------------------
+
 proc TimeHistorySolver {
     dt_init duration story_heights ctrl_nodes CollapseDrift MaxAnalysisDrift
     GMname maxRunTime temp {min_factor 1e-6} {max_factor 1}} {
@@ -22,22 +43,22 @@ proc TimeHistorySolver {
 
     set dt $dt_init
     while {1} {
-        if {[expr [clock seconds] - $start_time] >= $duration} {
+        if {[expr [clock seconds] - $start_time] >= $maxRunTime} {
             puts "Exceeding maximum running time";
-            return 4;
+            return [list 4 [getTime]];
         }
         set ok [analyze 1 $dt];
         if {$ok == 0} {
             if {[getTime] >= $duration} {
                 puts "Analysis finished";
-                return 1;
+                return [list 1 [getTime]];
             }
             set test_result [SDR_tester $story_heights $ctrl_nodes $CollapseDrift $MaxAnalysisDrift $GMname $temp]
             set collapse_flag [lindex $test_result 0]
             set maxAna_flag [lindex $test_result 1]
             if {$maxAna_flag} {
                 puts "Analysis finished, the structure collapsed"
-                return 2
+                return [list 2 [getTime]]
             }
             if {$collapse_flag && $print_collapse} {
                 puts "The structure was collapse"
@@ -57,15 +78,16 @@ proc TimeHistorySolver {
                 incr algorithm_id
                 if {$algorithm_id == 4} {
                     puts "Cannot converge"
-                    return 3
+                    return [list 3 [getTime]]
                 }
                 puts "-------- Switched algorithm: [lindex $algorithms $algorithm_id]"
             }
             puts "---- Reduced factor: $factor"
         }
         set dt [expr {$factor * $dt_init}]
-        if {[expr {$dt + [getTime]}] > $duration} {
+        if {[expr $dt + [getTime]] > $duration} {
             set dt [expr $duration - [getTime]]
+            if {[expr abs($dt)] < 1e-8} {return [list 1 [getTime]]}
         }
         algorithm [lindex $algorithms $algorithm_id]
         incr nstep
@@ -89,14 +111,14 @@ proc SDR_tester {story_heights ctrl_nodes CollapseDrift MaxAnalysisDrift GMname 
         }
         set SDR [expr {abs($disp_t - $disp_b) / $h}]
         if {$SDR >= $MaxAnalysisDrift} {
-            return {1 1}
+            return [list 1 1]
         }
         if {$SDR >= $CollapseDrift} {
             set f [open "$temp/${GMname}_CollapseState.txt" w]
             puts $f "1"
             close $f
-            return {1 0}
+            return [list 1 0]
         }
     }
-    return {0 0}
+    return [list 0 0]
 }

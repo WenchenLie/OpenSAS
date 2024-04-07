@@ -8,6 +8,7 @@ import time
 import shutil
 import subprocess
 import numpy as np
+from pathlib import Path
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
 from ui.Win_running import Ui_Win_running
@@ -16,7 +17,8 @@ from ui.Win_running import Ui_Win_running
 """
 时程分析、增量动力分析、Pushover分析监控窗口
 作者：列文琛
-最后更新：2024.03.05
+更新：2024-03-05
+更新：2024-04-07，优化代码
 """
 
 class MyWin(QDialog):
@@ -82,7 +84,10 @@ class MyWin(QDialog):
         if self.running_case == 'IDA':
             self.add_log(f'初始强度：{self.Sa0}g\n')
             self.add_log(f'强度增量：{self.Sa_incr}g\n')
-            self.add_log(f'倒塌点收敛强度容差：{self.tol}g\n')
+            if self.main.trace_collapse:
+                self.add_log(f'倒塌点收敛强度容差：{self.tol}g\n')
+            else:
+                self.add_log(f'倒塌点收敛强度容差：不追踪倒塌点\n')
             dict_ = {1: 'Sa(T)', 2: 'Sa,avg'}
             self.add_log(f'地震动强度指标：{dict_[self.intensity_measure]}\n')
         self.add_log('\n')
@@ -119,17 +124,17 @@ class MyWin(QDialog):
         time_cost = time_project_end - self.time_project_begin
         self.add_log(f'\n分析完成：{time_project_end_struct}\n')
         self.add_log(f'总耗时：{int(time_cost)}s\n')
-        with open(f'{self.main.cwd}/log/【{self.running_case.upper()}】{time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time_project_end))}.log', 'w') as f:
+        with open(self.main.dir_log / f'【{self.running_case.upper()}】{time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time_project_end))}.log', 'w') as f:
             text = self.ui.textBrowser.toPlainText()
             f.write(text)
-        with open(f'{self.main.Output_dir}/{self.main.log_name}.log', 'w') as f:
+        with open(self.main.Output_dir / f'{self.main.log_name}.log', 'w') as f:
             text = self.ui.textBrowser.toPlainText()
             f.write(text)
         if self.warning == 1:
-            with open(f'{self.main.cwd}/log/【warning】{time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time_project_end))}.log', 'w') as f:
+            with open(self.main.dir_log / f'【warning】{time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time_project_end))}.log', 'w') as f:
                 text = self.ui.textBrowser_2.toPlainText()
                 f.write(text)
-            with open(f'{self.main.Output_dir}/警告.log', 'w') as f:
+            with open(self.main.Output_dir / '警告.log', 'w') as f:
                 text = self.ui.textBrowser_2.toPlainText()
                 f.write(text)
         if state == 1:
@@ -150,7 +155,7 @@ class MyWin(QDialog):
         self.thread_run.start()
 
     def copy_current_tcl_file(self):
-        with open(f'{self.main.cwd}/temp_running_{self.main.model_name}_{self.current_gm}.tcl', 'r') as f:
+        with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.tcl', 'r') as f:
             text = f.read()
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
@@ -200,13 +205,13 @@ class WorkerThread(QThread):
         self.OS_path: str = main.OS_path
         self.is_kill = 0
 
-    def modify_tcl(self, Output_dir: str, gm_name: str, dt: str | float,
+    def modify_tcl(self, Output_dir: Path, gm_name: str, dt: str | float,
                    NPTS: int | float, duration: float | str,
                    fv_duration: float | str, SF: float | str, num: int=None):
         """采用正则表达式修改tcl文件
 
         Args:
-            Output_dir (str): 输出文件夹路径
+            Output_dir (Path): 输出文件夹路径
             gm_name (str): 地震动名
             dt (str | float): 步长
             NPTS (int | float): 步数
@@ -216,10 +221,15 @@ class WorkerThread(QThread):
             num (int, optional): 当前地震动的序号
         """
 
-        with open(f'{self.main.cwd}/models/{self.main.model_name}.tcl', 'r') as f:
+        with open(self.main.dir_model / f'{self.main.model_name}.tcl', 'r') as f:
             text = f.read()
-        pattern1 = re.compile(r'(set  EQ )[01](;  # Regular expression anchor)')
-        pattern2 = re.compile(r'(set  PO )[01](;  # Regular expression anchor)')
+        pattern = re.compile(r'(set MaxRunTime )[0-9.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(float(self.main.maxRunTime)) + r'\g<2>', text) 
+        pattern1 = re.compile(r'(set EQ )[01](;  # \$\$\$)')
+        pattern2 = re.compile(r'(set PO )[01](;  # \$\$\$)')
+        self.find_pattern(pattern1, text)
+        self.find_pattern(pattern2, text)
         if self.mainWin.running_case in ['th', 'IDA']:
             text = pattern1.sub(r'\g<1>' + '1' + r'\g<2>', text)
             text = pattern2.sub(r'\g<1>' + '0' + r'\g<2>', text)
@@ -228,38 +238,69 @@ class WorkerThread(QThread):
             text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
         else:
             self.main.logger.warning('无法进行正则匹配\n(set  EQ )')
-        pattern = re.compile(r'(set MainFolder ").+(";)')
-        text = pattern.sub(r'\g<1>' + Output_dir + r'\g<2>', text)
-        pattern = re.compile(r'(set GMname ").+(";)')
+        pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + Output_dir.absolute().as_posix() + r'\g<2>', text)
+        pattern = re.compile(r'(set GMname ").+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + gm_name + r'\g<2>', text)
-        pattern = re.compile(r'(set SubFolder ").+(";)')
+        pattern = re.compile(r'(set SubFolder ").+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
         if num:
             text = pattern.sub(r'\g<1>' + f'{gm_name}_{num}' + r'\g<2>', text)
         else:
             text = pattern.sub(r'\g<1>' + gm_name + r'\g<2>', text)
-        pattern = re.compile(r'(set GMdt )[0-9.]+')
-        text = pattern.sub(r'\g<1>' + str(dt), text)
-        pattern = re.compile(r'(set GMpoints )\d+')
-        text = pattern.sub(r'\g<1>' + str(NPTS), text)
-        pattern = re.compile(r'(set GMduration )[0-9.]+')
-        text = pattern.sub(r'\g<1>' + str(duration), text)
-        pattern = re.compile(r'(set FVduration )[0-9.]+')
-        text = pattern.sub(r'\g<1>' + str(fv_duration), text)
-        pattern = re.compile(r'(set EqSF )[0-9.]+')
-        text = pattern.sub(r'\g<1>' + str(SF), text)
-        pattern = re.compile(r'(set GMFile "GMs/[$]GMname).+(";)')
-        text = pattern.sub(r'\g<1>' + self.main.suffix + r'\g<2>', text)
-        pattern = re.compile(r'set  ShowAnimation [01];')
+        pattern = re.compile(r'(set GMdt )[0-9.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(dt) + r'\g<2>', text)
+        pattern = re.compile(r'(set GMpoints )\d+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(NPTS) + r'\g<2>', text)
+        pattern = re.compile(r'(set GMduration )[0-9.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(duration) + r'\g<2>', text)
+        pattern = re.compile(r'(set FVduration )[0-9.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(fv_duration) + r'\g<2>', text)
+        pattern = re.compile(r'(set EqSF )[0-9.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(SF) + r'\g<2>', text)
+        pattern = re.compile(r'(set GMFile ").+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + self.main.dir_gm.as_posix() + f'/$GMname{self.main.suffix}' + r'\g<2>', text)
+        pattern = re.compile(r'(set subroutines ").+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + self.main.dir_subroutines.as_posix() + r'\g<2>', text)
+        pattern = re.compile(r'(set temp ").+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + self.main.dir_temp.as_posix() + r'\g<2>', text)
+        pattern = re.compile(r'set ShowAnimation [01];  # \$\$\$')
+        self.find_pattern(pattern, text)
         if not self.main.display:
-            text = pattern.sub(r'set  ShowAnimation 0;', text)
+            text = pattern.sub(r'set ShowAnimation 0;  # $$$', text)
         else:
-            text = pattern.sub(r'set  ShowAnimation 1;', text)
+            text = pattern.sub(r'set ShowAnimation 1;  # $$$', text)
+        pattern = re.compile(r'set MPCO [01];  # \$\$\$')
+        self.find_pattern(pattern, text)
         if self.main.mpco:
-            text_mpco = f'recorder mpco "$MainFolder/$SubFolder/{gm_name}_{num}.mpco" -N "displacement" "acceleration" "modesOfVibration" -E "material.stress" "material.strain"\n'
-            pattern = re.compile(r'# EIGEN VECTORS')
-            text = text.replace('# EIGEN VECTORS', text_mpco + '# EIGEN VECTORS')
-        with open(f'{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
+            text = pattern.sub(r'set MPCO 1;  # $$$', text)
+        else:
+            text = pattern.sub(r'set MPCO 0;  # $$$', text)
+        with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
+
+    @staticmethod
+    def find_pattern(pattern: re.Pattern, text: str):
+        """
+        如果找不到匹配值，或找到多个匹配值，则报错，
+        确保有且只有一种匹配模式
+        """
+        res = re.findall(pattern, text)
+        if len(res) == 0:
+            raise ValueError(f'无法匹配: {pattern}')
+        if len(res) > 1:
+            raise ValueError(f'找到{len(res)}种匹配模式: {pattern}')
+
 
     def run(self):
         if self.mainWin.running_case == 'th':
@@ -293,23 +334,22 @@ class WorkerThread(QThread):
             self.signal_add_log.emit(f'自由振动时间：{fv_duration}s\n')
             self.signal_add_log.emit(f'缩放系数：{SF:.3f}\n')
             self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-            cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+            cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
             # 运行分析
             if self.mainWin.print_result:
                 subprocess.call(cmd)
             else:
                 subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             # time.sleep(2)  # 模拟耗时工作
-            time.sleep(1)
-            if os.path.exists(f'{self.main.cwd}/{gm_name}_CollapseState.txt'):
+            if os.path.exists(self.main.dir_temp / f'{gm_name}_CollapseState.txt'):
                 collapsed = 1
                 self.signal_add_log.emit(f'倒塌：是\n')
-                os.remove(f'{self.main.cwd}/{gm_name}_CollapseState.txt')
+                os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
             else:
                 collapsed = 0
                 self.signal_add_log.emit(f'倒塌：否\n')
-            if not os.path.exists(f'{self.main.Output_dir}/{gm_name}'):
-                os.makedirs(f'{self.main.Output_dir}/{gm_name}')
+            if not os.path.exists(self.main.Output_dir / gm_name):
+                os.makedirs(self.main.Output_dir / gm_name)
             Sa = None
             if self.main.method == 'd':
                 Sa = self.main.th_para  # 指定PGA
@@ -318,10 +358,10 @@ class WorkerThread(QThread):
             elif self.main.method == 'j':
                 Sa = self.main.th_para[2]  # 指定Sa,avg
             if Sa:
-                np.savetxt(f'{self.main.Output_dir}/{gm_name}/Sa.dat', np.array([Sa]))
-            with open(f'{self.main.Output_dir}/{gm_name}/isCollapsed.dat', 'w') as f:
+                np.savetxt(self.main.Output_dir / gm_name / 'Sa.dat', np.array([Sa]))
+            with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
                 f.write(str(collapsed))
-            os.remove(f'{self.main.cwd}/temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
+            # os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')  # TODO
             time_gm_end = time.time()
             time_cost = time_gm_end - time_gm_start
             self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
@@ -381,7 +421,7 @@ class WorkerThread(QThread):
                     text_Sa = 'Sa,avg'
                 self.signal_add_log.emit(f'{text_Sa}：{Sa_current}g\n')
                 self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
-                cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+                cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
                 if self.mainWin.test:
                     time.sleep(1)  # 模拟耗时工作
                 else:
@@ -391,17 +431,17 @@ class WorkerThread(QThread):
                     else:
                         subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 time.sleep(1)
-                if os.path.exists(f'{self.main.cwd}/{gm_name}_CollapseState.txt'):
+                if os.path.exists(self.main.dir_temp/ f'{gm_name}_CollapseState.txt'):
                     collapsed = 1
                     self.signal_add_log.emit(f'倒塌：是\n')
-                    os.remove(f'{self.main.cwd}/{gm_name}_CollapseState.txt')
+                    os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
                 else:
                     collapsed = 0
                     self.signal_add_log.emit(f'倒塌：否\n')
-                if not os.path.exists(f'{self.main.Output_dir}/{gm_name}_{run_num+1}'):
-                    os.makedirs(f'{self.main.Output_dir}/{gm_name}_{run_num+1}')
-                np.savetxt(f'{self.main.Output_dir}/{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
-                with open(f'{self.main.Output_dir}/{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
+                if not os.path.exists(self.main.Output_dir / f'{gm_name}_{run_num+1}'):
+                    os.makedirs(self.main.Output_dir / f'{gm_name}_{run_num+1}')
+                np.savetxt(self.main.Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
+                with open(self.main.Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
                     f.write(str(collapsed))
                 time_gm_end = time.time()
                 time_cost = time_gm_end - time_gm_start
@@ -410,35 +450,41 @@ class WorkerThread(QThread):
                 self.signal_add_log.emit(f'该地震动计算耗时：{round(time_cost, 2)}s\n\n')
                 if self.mainWin.test:
                     collapsed = 0
-                if run_num == 0 and collapsed == 1:
-                    self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                    self.main.logger.warning(f'{gm_name}首次计算即倒塌！\n\n')
-                    break
-                if collapsed == 0 and iter_state == 0:
-                    # 如果未倒塌，且不处于迭代状态
-                    Sa_l = Sa_current
-                    Sa_current += Sa_incr
-                else:
-                    # 在迭代状态下，即已经出现过倒塌后
-                    iter_state = 1  # 进入迭代状态
-                    if collapsed == 1:
-                        # 若迭代状态下倒塌，更新最小倒塌强度
-                        Sa_r = min(Sa_current, Sa_r)
+                if self.main.trace_collapse:
+                    # 追踪倒塌
+                    if run_num == 0 and collapsed == 1:
+                        self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
+                        self.main.logger.warning(f'{gm_name}首次计算即倒塌！\n\n')
+                        break
+                    if collapsed == 0 and iter_state == 0:
+                        # 如果未倒塌，且不处于迭代状态
+                        Sa_l = Sa_current
+                        Sa_current += Sa_incr
                     else:
-                        # 若迭代状态下未倒塌，更新最大未倒塌强度
-                        Sa_l = max(Sa_current, Sa_l)
-                    if Sa_l > Sa_r:
-                        raise ValueError('最小倒塌强度大于最大未倒塌强度!')
-                    if Sa_r - Sa_l < tol:
-                        break  # 满足收敛容差，完成当前地震动分析
-                    Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
+                        # 在迭代状态下，即已经出现过倒塌后
+                        iter_state = 1  # 进入迭代状态
+                        if collapsed == 1:
+                            # 若迭代状态下倒塌，更新最小倒塌强度
+                            Sa_r = min(Sa_current, Sa_r)
+                        else:
+                            # 若迭代状态下未倒塌，更新最大未倒塌强度
+                            Sa_l = max(Sa_current, Sa_l)
+                        if Sa_l > Sa_r:
+                            raise ValueError('最小倒塌强度大于最大未倒塌强度!')
+                        if Sa_r - Sa_l < tol:
+                            break  # 满足收敛容差，完成当前地震动分析
+                        Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
+                else:
+                    # 不追踪倒塌
+                    Sa_current += Sa_incr
             else:
                 # 超过最大计算次数
-                self.mainWin.warning = 1
-                self.signal_add_warning.emit(time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end)) + '\n')
-                self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
-                self.main.logger.warning(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
-            os.remove(f'{self.main.cwd}/temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
+                if self.main.trace_collapse:
+                    self.mainWin.warning = 1
+                    self.signal_add_warning.emit(time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end)) + '\n')
+                    self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
+                    self.main.logger.warning(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
+            os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             self.main.logger.success(f'第{idx+1}条地震动计算完成')
         else:
             self.signal_finished.emit(1)
@@ -463,15 +509,15 @@ class WorkerThread(QThread):
         time_gm_start = time.time()
         self.signal_add_log.emit(f'开始：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_start))}\n')
         self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-        cmd = f'"{self.OS_path}" "{self.main.cwd}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+        cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
         # 运行分析
         if self.mainWin.print_result:
             subprocess.call(cmd)
         else:
             subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if not os.path.exists(f'{self.main.Output_dir}/{gm_name}'):
-            os.makedirs(f'{self.main.Output_dir}/{gm_name}')
-        with open(f'{self.main.Output_dir}/{gm_name}/isCollapsed.dat', 'w') as f:
+        if not os.path.exists(self.main.Output_dir / gm_name):
+            os.makedirs(self.main.Output_dir / gm_name)
+        with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
             f.write('2')
         time_gm_end = time.time()
         elapsed_time = time_gm_end - time_gm_start
