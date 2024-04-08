@@ -5,12 +5,15 @@ import re
 from pathlib import Path
 from math import pi
 from typing import Literal
+from typing import Literal
 
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from loguru import logger
 
+from .Win import MyWin
+from .Spectrum import Spectrum
 from .Win import MyWin
 from .Spectrum import Spectrum
 from PyQt5.QtCore import Qt
@@ -21,8 +24,16 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 作者：列文琛
 更新：2024.03.10
 更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
+更新：2024.03.10
+更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
 """
 
+logger.remove()
+logger.add(
+    sink=sys.stdout,
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
+    level="DEBUG"
+)
 logger.remove()
 logger.add(
     sink=sys.stdout,
@@ -53,6 +64,7 @@ class MRF:
             notes (str, optional): 模型描述，默认为''  
             logger (logger, optional): 在主函数中定义的日志对象
         """
+        print(self.dir_model)
         self.logger = logger
         logger.success('钢框架时程分析/Pushover分析/IDA工具')
         logger.success(f'opensees代码格式版本：{self.format_version}')
@@ -110,6 +122,7 @@ class MRF:
         self.suffix = suffix
         self.GM_names = GMs
         GM_info = np.loadtxt(self.dir_gm / 'GM_info.txt', dtype=str)
+        GM_info = np.loadtxt(self.dir_gm / 'GM_info.txt', dtype=str)
         dt_dict = dict()
         for i in range(len(GM_info)):
             name = GM_info[i, 0]
@@ -117,6 +130,7 @@ class MRF:
             dt_dict[name] = dt
         for name in self.GM_names:
             self.GM_dts.append(dt_dict[name])
+            th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
             th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
             self.GM_NPTS.append(len(th))
             self.GM_durations.append(round((len(th) - 1) * dt_dict[name], 6))
@@ -206,6 +220,8 @@ class MRF:
             print(f'正在缩放地震动...({idx+1}/{self.GM_N})     \r', end='')
             th = np.loadtxt(self.dir_gm / f'{gm_name}{self.suffix}')
             RSA, RSV, RSD = Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
+            th = np.loadtxt(self.dir_gm / f'{gm_name}{self.suffix}')
+            RSA, RSV, RSD = Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
             self.GM_RSA[idx] = RSA
             self.GM_RSV[idx] = RSV
             self.GM_RSD[idx] = RSD    
@@ -268,6 +284,7 @@ class MRF:
             self.GM_SF.append(SF)
             if save_SF:
                 np.savetxt(self.dir_temp / 'GM_SFs.txt', self.GM_SF)  # 保存缩放系数
+                np.savetxt(self.dir_temp / 'GM_SFs.txt', self.GM_SF)  # 保存缩放系数
         if save_unscaled_spec:
             data_RSA = np.zeros((len(T), self.GM_N + 1))
             data_RSV = np.zeros((len(T), self.GM_N + 1))
@@ -289,6 +306,12 @@ class MRF:
                 pct_D[i, 0] = np.percentile(data_RSD[i, 1:], 16)
                 pct_D[i, 1] = np.percentile(data_RSD[i, 1:], 50)
                 pct_D[i, 2] = np.percentile(data_RSD[i, 1:], 84)
+            np.savetxt(self.dir_temp / 'Unscaled_RSA.txt', data_RSA, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSV.txt', data_RSV, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSD.txt', data_RSD, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSA_pct.txt', pct_A, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSV_pct.txt', pct_V, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Unscaled_RSD_pct.txt', pct_D, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Unscaled_RSA.txt', data_RSA, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Unscaled_RSV.txt', data_RSV, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Unscaled_RSD.txt', data_RSD, fmt='%.5f')
@@ -317,6 +340,12 @@ class MRF:
                 pct_D[i, 0] = np.percentile(data_RSD[i, 1:], 16)
                 pct_D[i, 1] = np.percentile(data_RSD[i, 1:], 50)
                 pct_D[i, 2] = np.percentile(data_RSD[i, 1:], 84)
+            np.savetxt(self.dir_temp / 'Scaled_RSA.txt', data_RSA, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSV.txt', data_RSV, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSD.txt', data_RSD, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSA_pct.txt', pct_A, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSV_pct.txt', pct_V, fmt='%.5f')
+            np.savetxt(self.dir_temp / 'Scaled_RSD_pct.txt', pct_D, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Scaled_RSA.txt', data_RSA, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Scaled_RSV.txt', data_RSV, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Scaled_RSD.txt', data_RSD, fmt='%.5f')
@@ -382,7 +411,7 @@ class MRF:
         else:
             os.makedirs(self.Output_dir)
             return True
-    
+
     def set_running_parameters(
             self, Output_dir: str | Path=None, OS_terminal: str='OpenSees351',
             fv_duration=0.0, display=True, mpco=False, log_name='日志',
@@ -399,14 +428,17 @@ class MRF:
             mpco (bool): 是否创建mpco文件，用于被STKO读取后处理  
             log_name (str): 日志文件名  
             maxRunTime (float): 最大允许运行时间(s)，默认600s  
+            maxRunTime (float): 最大允许运行时间(s)，默认600s  
             auto_quit (bool): 计算完成时是否自动关闭监控窗口，默认False
         """
         self.display = display
         self.mpco = mpco
         self.log_name = log_name
         self.maxRunTime = maxRunTime
+        self.maxRunTime = maxRunTime
         self.auto_quit = auto_quit
         if Output_dir:
+            Output_dir = Path(Output_dir).absolute()
             Output_dir = Path(Output_dir).absolute()
             self.Output_dir = Output_dir
         if not self._check_Output_dir():
@@ -422,6 +454,7 @@ class MRF:
         if mpco:
             OS_terminal = 'OpenSees340_mpco'
             logger.warning('当输出mpco时将默认使用OpenSees340_mpco.exe求解器')
+        self.OS_path = self.dir_terminal / f'{OS_terminal}.exe'
         self.OS_path = self.dir_terminal / f'{OS_terminal}.exe'
         self.fv_duration = fv_duration
         
