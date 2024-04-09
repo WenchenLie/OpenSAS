@@ -31,9 +31,9 @@ if __name__ == "__main__":
     T1 = 1.397
     model.scale_ground_motions('data/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
     model.set_running_parameters(Output_dir='E:/MRF_results/test/4SMRF_AE', fv_duration=0, display=True, log_name='日志', auto_quit=False)
-    model.run_time_history(print_result=True)
+    # model.run_time_history(print_result=True)
     # model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=5, intensity_measure=1)
-    # model.run_pushover(print_result=True)
+    model.run_pushover(print_result=True)
     # QuakeReadPushover('H:/MRF_results/test/4SMRF_AE')
 
 

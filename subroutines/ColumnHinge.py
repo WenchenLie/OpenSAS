@@ -27,8 +27,14 @@
 # --------------------------------------------------------------------------------
 
 import openseespy.opensees as ops
+from typing import Literal
 
-def ColumnHinge(SpringID, NodeI, NodeJ, E, Ix, d, htw, ry, L, Lb, My, PPy, SF_PPy, pinned, check=None):
+
+def ColumnHinge(
+    SpringID: int, NodeI: int, NodeJ: int,
+    E: float, Ix: float, d: float, htw: float, ry: float,
+    L: float, Lb: float, My: float, PPy: float,
+    SF_PPy: float, pinned: Literal[1, 2], check: bool=None):
     
     n = 10.0
     c1 = 1.0

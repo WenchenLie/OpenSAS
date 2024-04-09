@@ -27,7 +27,7 @@ def QuakeReadPushover(folder: Path):
 
 if __name__ == "__main__":
     
-    folder = Path(r'H:\MRF_results\test\4SMRF_AS')
+    folder = Path(r'E:\MRF_results\test\4SMRF')
     QuakeReadPushover(folder)
 
 

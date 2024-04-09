@@ -32,8 +32,18 @@
 # --------------------------------------------------------------------------------
 
 import openseespy.opensees as ops
+from typing import Literal
 
-def PanelZone(Floor, Axis, X, Y, E, mu, fy, A_stiff, I_stiff, d_col, d_beam, tp, tf, bf, transfTag, type_, position, check=None):
+
+def PanelZone(
+    Floor: int, Axis: int,
+    X: float, Y: float,
+    E: float, mu: float, fy: float,
+    A_stiff: float, I_stiff: float,
+    d_col: float, d_beam: float, tp: float, tf: float,
+    bf: float, transfTag: Literal[1, 2, 3],
+    type_: Literal[1, 2],
+    position: Literal['L', 'T', 'LT', 'RT'], check: bool=None):
     # node ID
     node_C = 11000000 + Floor * 10000 + Axis * 100  # 11FFAA01
     node_B = node_C + 1  # 11FFAA01
@@ -101,9 +111,9 @@ def PanelZone(Floor, Axis, X, Y, E, mu, fy, A_stiff, I_stiff, d_col, d_beam, tp,
     elif type_ == 2:
         ops.element("elasticBeamColumn", ele_B, node_C, node_B, A_stiff, E, I_stiff, transfTag)
         ops.element("elasticBeamColumn", ele_R, node_C, node_R, A_stiff, E, I_stiff, transfTag)
-        if type_ != "L" and type_ != "LT":
+        if position != "L" and position != "LT":
             ops.element("elasticBeamColumn", ele_L, node_C, node_L, A_stiff, E, I_stiff, transfTag)
-        if type_ != "T" and type_ != "LT" and type_ != "RT":
+        if position != "T" and position != "LT" and position != "RT":
             ops.element("elasticBeamColumn", ele_T, node_C, node_T, A_stiff, E, I_stiff, transfTag)
 
     # Restrain DOF at panel corners

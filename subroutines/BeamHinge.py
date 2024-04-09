@@ -30,9 +30,15 @@
 # Date: 2024-03-26
 # --------------------------------------------------------------------------------
 import openseespy.opensees as ops
+from typing import Literal
 
 
-def BeamHinge(SpringID, NodeI, NodeJ, E, fy, Ix, d, htw, bftf, ry, L, Ls, Lb, My, type_, check=None):
+def BeamHinge(
+    SpringID: int, NodeI: int, NodeJ: int,
+    E: float, fy: float,
+    Ix: float, d: float, htw: float, bftf: float,
+    ry: float, L: float, Ls: float, Lb: float,
+    My: float, type_: Literal[1, 2, 3], check: bool=None):
     
     n = 10.0
     c1 = 1.0

@@ -116,7 +116,6 @@ class MRF:
         self.suffix = suffix
         self.GM_names = GMs
         GM_info = np.loadtxt(self.dir_gm / 'GM_info.txt', dtype=str)
-        GM_info = np.loadtxt(self.dir_gm / 'GM_info.txt', dtype=str)
         dt_dict = dict()
         for i in range(len(GM_info)):
             name = GM_info[i, 0]
@@ -124,7 +123,6 @@ class MRF:
             dt_dict[name] = dt
         for name in self.GM_names:
             self.GM_dts.append(dt_dict[name])
-            th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
             th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
             self.GM_NPTS.append(len(th))
             self.GM_durations.append(round((len(th) - 1) * dt_dict[name], 6))
@@ -429,10 +427,8 @@ class MRF:
         self.mpco = mpco
         self.log_name = log_name
         self.maxRunTime = maxRunTime
-        self.maxRunTime = maxRunTime
         self.auto_quit = auto_quit
         if Output_dir:
-            Output_dir = Path(Output_dir).absolute()
             Output_dir = Path(Output_dir).absolute()
             self.Output_dir = Output_dir
         if not self._check_Output_dir():
@@ -448,7 +444,6 @@ class MRF:
         if mpco:
             OS_terminal = 'OpenSees340_mpco'
             logger.warning('当输出mpco时将默认使用OpenSees340_mpco.exe求解器')
-        self.OS_path = self.dir_terminal / f'{OS_terminal}.exe'
         self.OS_path = self.dir_terminal / f'{OS_terminal}.exe'
         self.fv_duration = fv_duration
         

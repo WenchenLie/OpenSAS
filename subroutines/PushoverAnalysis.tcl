@@ -46,7 +46,7 @@ proc PushoverAnalysis {CtrlNode Dmax Dincr_init maxRunTime {min_factor 1e-6} {ma
                     puts "Cannot converge"
                     return [list 3 [nodeDisp $CtrlNode 1]]
                 }
-                puts "-- [nodeDisp $CtrlNode 1] ------ Switched algorithm: [lindex $algorithms $algorithm_id]"
+                puts "-- [nodeDisp $CtrlNode 1] ------ Switched algorithm: [lindex $ls_algorithm $Id_algorithm]"
             }
             puts "-- [nodeDisp $CtrlNode 1] -- Reduced factor: $factor"
         }

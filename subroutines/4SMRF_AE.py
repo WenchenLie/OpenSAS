@@ -6,13 +6,13 @@
 import os
 from pathlib import Path
 import openseespy.opensees as ops
-from ..subroutines.BeamHinge import BeamHinge
-from ..subroutines.ColumnHinge import ColumnHinge
-from ..subroutines.PanelZone import PanelZone
-from ..subroutines.Spring_Zero import Spring_Zero
-from ..subroutines.Spring_Rigid import Spring_Rigid
-from ..subroutines.TimeHistorySolver import TimeHistorySolver
-from ..subroutines.PushoverAnalysis import PushoverAnalysis
+from BeamHinge import BeamHinge
+from ColumnHinge import ColumnHinge
+from PanelZone import PanelZone
+from Spring_Zero import Spring_Zero
+from Spring_Rigid import Spring_Rigid
+from TimeHistorySolver import TimeHistorySolver
+from PushoverAnalysis import PushoverAnalysis
 import time
 from math import pi
 
@@ -24,12 +24,12 @@ ops.model("basic", "-ndm", 2, "-ndf", 3)
 MaxRunTime = 600.0
 StartTime = time.time()
 RunTime = 0.0
-EQ = 1
-PO = 0
+EQ = 0
+PO = 1
 ShowAnimation = 1
 
 # Ground motion information
-MainFolder = Path("H:/MRF_results/test/4SMRF")
+MainFolder = Path("E:/MRF_results/test/4SMRF")
 GMname = "th5"
 SubFolder = "th5"
 GMdt = 0.01
@@ -37,7 +37,7 @@ GMpoints = 5590
 GMduration = 55.89
 FVduration = 30
 EqSF = 2.0
-GMFile = f"F:/MRF/GMs/{GMname}.th"
+GMFile = f"C:/Users/Admin/Desktop/MRF/MRF/GMs/{GMname}.th"
 
 # Results folders
 if not MainFolder.exists():
