@@ -24,8 +24,6 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 作者：列文琛
 更新：2024.03.10
 更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
-更新：2024.03.10
-更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
 """
 
 logger.remove()
