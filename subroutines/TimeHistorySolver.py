@@ -48,17 +48,17 @@ def TimeHistorySolver(
     while True:
         if time.time() - start_time > maxRunTime:
             print("Exceeding maximum running time")
-            return 4
+            return 3, ops.getTime(), collapse_flag
         ok = ops.analyze(1, dt)
         if ok == 0:
             if ops.getTime() >= duration:
                 print("Analysis finished")
-                return 1
+                return 1, ops.getTime(), collapse_flag
             collapse_flag, maxAna_flag = SDR_tester(
                 story_heights, ctrl_nodes, CollapseDrift, MaxAnalysisDrift, GMname)
             if maxAna_flag:
                 print("Analysis finished, the structure collapsed")
-                return 2
+                return 1, ops.getTime(), collapse_flag
             if collapse_flag and print_collapse:
                 print("The structure was collapse")
                 print_collapse = False
@@ -76,7 +76,7 @@ def TimeHistorySolver(
                 algorithm_id += 1
                 if algorithm_id == 4:
                     print("Cannot converge")
-                    return 3
+                    return 2, ops.getTime(), collapse_flag
                 print(f"-------- Switched algorithm:", *algorithms[algorithm_id])
             print(f"---- Reduced factor: {factor}")
         dt = dt_init * factor

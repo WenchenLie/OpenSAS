@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import numpy as np
 from pathlib import Path
+from importlib import import_module
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
 from ui.Win_running import Ui_Win_running
@@ -54,6 +55,7 @@ class MyWin(QDialog):
             self.T0, self.RSA, self.Sa0, self.Sa_incr, self.tol, self.max_ana, self.test, self.intensity_measure, self.T_range = IDA_para
         self.print_result = print_result  # 是否输出运行过程中的消息
         self.concurrency = concurrency
+        self.openseespy_paras = None
         self.ui.setupUi(self)
         self.init_ui()
         self.run()
@@ -72,10 +74,14 @@ class MyWin(QDialog):
             self.ui.label_20.setText('')
             self.add_log('运行工况：IDA\n')
         elif self.running_case == 'pushover':
-            self.ui.label_3.setText('正在运行：pushover')
+            self.ui.label_3.setText('正在运行：Pushover')
             self.add_log('运行工况：Pushover分析\n')
         else:
             raise ValueError('【Error】参数 running_case 错误')
+        if self.main.script == 'tcl':
+            self.add_log('脚本类型：tcl\n')
+        else:
+            self.add_log('脚本类型：openseespy\n')
         self.add_log(f'总地震动数量：{self.main.GM_N}\n')
         self.add_log(f'输出文件夹：{self.main.Output_dir}\n')
         self.time_project_begin = time.time()
@@ -99,7 +105,7 @@ class MyWin(QDialog):
             self.ui.label_17.setText(f'{self.fv_duration}s')  # 自由振动时长
         elif self.running_case == 'pushover':
             self.ui.label_17.setText('')
-        self.ui.pushButton_2.clicked.connect(self.copy_current_tcl_file)
+        self.ui.pushButton_2.clicked.connect(self.copy_current_script)
         self.thread_run = None
         self.ui.pushButton.clicked.connect(self.kill)
         self.ui.pushButton_3.clicked.connect(lambda x: self.quit(self.current_gm))
@@ -152,18 +158,26 @@ class MyWin(QDialog):
         self.thread_run.signal_finished.connect(self.finished)
         self.thread_run.signal_add_log.connect(self.add_log)
         self.thread_run.signal_add_warning.connect(self.add_warinng)
+        self.thread_run.signal_send_openseespy_paras.connect(self.get_openseespy_paras)
         self.thread_run.start()
 
-    def copy_current_tcl_file(self):
-        if self.running_case == 'pushover':
-            with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.tcl', 'r') as f:
-                text = f.read()
+    def copy_current_script(self):
+        if self.main.script == 'tcl':
+            if self.running_case == 'pushover':
+                with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.{self.main.script}', 'r') as f:
+                    text = f.read()
+            else:
+                with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.{self.main.script}', 'r') as f:
+                    text = f.read()
         else:
-            with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.tcl', 'r') as f:
-                text = f.read()
+            paras = self.openseespy_paras
+            added_text = '\n\n'
+            added_text += 'if name == "__main__":\n'
+            added_text += f'result = run_openseespy({paras})'
+
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
-        self.add_log('已复制tcl代码\n')
+        self.add_log(f'已复制代码\n')
         QMessageBox.information(self, '提示', '已复制至剪切板。')
 
     def kill(self):
@@ -190,6 +204,9 @@ class MyWin(QDialog):
         # os.remove(f'{self.main.cwd}/temp_running_{self.main.model_name}_{current_gm}.tcl')
         pass
 
+    def get_openseespy_paras(self, paras: list):
+        self.openseespy_paras = paras
+
 
 class WorkerThread(QThread):
     """opensees求解线程
@@ -200,6 +217,8 @@ class WorkerThread(QThread):
     signal_finished = pyqtSignal(int)  # 运行完成
     signal_add_log = pyqtSignal(str)  # 增加日志内容
     signal_add_warning = pyqtSignal(str)  # 增加警告内容
+    signal_send_openseespy_paras = pyqtSignal(list)  # openseespy调用参数
+
 
     def __init__(self, main: MRF, mainWin: MyWin):
         super().__init__()
@@ -209,10 +228,11 @@ class WorkerThread(QThread):
         self.OS_path: str = main.OS_path
         self.is_kill = 0
 
-    def modify_tcl(self, Output_dir: Path, gm_name: str, dt: str | float,
+
+    def modify_script(self, Output_dir: Path, gm_name: str, dt: str | float,
                    NPTS: int | float, duration: float | str,
                    fv_duration: float | str, SF: float | str, num: int=None):
-        """采用正则表达式修改tcl文件
+        """采用正则表达式修改脚本文件(仅当采用tcl脚本时需要修改)
 
         Args:
             Output_dir (Path): 输出文件夹路径
@@ -227,7 +247,7 @@ class WorkerThread(QThread):
 
         with open(self.main.dir_model / f'{self.main.model_name}.tcl', 'r') as f:
             text = f.read()
-        pattern = re.compile(r'(set MaxRunTime )[0-9.]+(;  # \$\$\$)')
+        pattern = re.compile(r'(set maxRunTime )[0-9.]+(;  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(float(self.main.maxRunTime)) + r'\g<2>', text) 
         pattern1 = re.compile(r'(set EQ )[01](;  # \$\$\$)')
@@ -317,6 +337,7 @@ class WorkerThread(QThread):
         elif self.mainWin.running_case == 'pushover':
             self.run_pushover()
 
+
     def run_th(self):
         for idx in range(self.main.GM_N):
             if self.is_kill == 1:
@@ -340,23 +361,58 @@ class WorkerThread(QThread):
             self.signal_add_log.emit(f'持时：{duration}s\n')
             self.signal_add_log.emit(f'自由振动时间：{fv_duration}s\n')
             self.signal_add_log.emit(f'缩放系数：{SF:.3f}\n')
-            self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-            cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
-            # 运行分析
-            if self.mainWin.print_result:
-                subprocess.call(cmd)
+            if self.main.script == 'tcl':
+                self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
+                cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+                # 运行分析
+                if self.mainWin.print_result:
+                    subprocess.call(cmd)
+                else:
+                    subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if os.path.exists(self.main.dir_temp / f'{gm_name}_CollapseState.txt'):
+                    collapsed = 1
+                    self.signal_add_log.emit(f'倒塌：是\n')
+                    os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
+                else:
+                    collapsed = 0
+                    self.signal_add_log.emit(f'倒塌：否\n')
+                if not os.path.exists(self.main.Output_dir / gm_name):
+                    os.makedirs(self.main.Output_dir / gm_name)
             else:
-                subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # time.sleep(2)  # 模拟耗时工作
-            if os.path.exists(self.main.dir_temp / f'{gm_name}_CollapseState.txt'):
-                collapsed = 1
-                self.signal_add_log.emit(f'倒塌：是\n')
-                os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
-            else:
-                collapsed = 0
-                self.signal_add_log.emit(f'倒塌：否\n')
-            if not os.path.exists(self.main.Output_dir / gm_name):
-                os.makedirs(self.main.Output_dir / gm_name)
+                module = import_module(f'models.{self.main.model_name}')
+                run_openseespy = getattr(module, 'run_openseespy')
+                maxRunTime = self.main.maxRunTime
+                EQorPO = 'EQ'
+                if self.main.display:
+                    ShowAnimation = True
+                else:
+                    ShowAnimation = False
+                if self.main.mpco:
+                    MPCO = True
+                else:
+                    MPCO = False
+                MainFolder = self.main.Output_dir
+                GMname = gm_name
+                SubFolder = gm_name
+                GMdt = dt
+                GMpoints = NPTS
+                GMduration = duration
+                FVduration = fv_duration
+                EqSF = SF
+                GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
+                maxRoofDrift = 0.1
+                paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                         GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+                self.signal_send_openseespy_paras.emit(paras)
+                result = run_openseespy(*paras)
+                if result[2]:
+                    collapsed = 1  # 分析完成，倒塌
+                else:
+                    collapsed = 0  # 分析完成，未倒塌
+                if result[0] == 2:
+                    self.signal_add_warning(f'{gm_name}分析不收敛')
+                elif result[0] == 3:
+                    self.signal_add_warning(f'{gm_name}超过最大分析时间')
             Sa = None
             if self.main.method == 'd':
                 Sa = self.main.th_para  # 指定PGA
@@ -368,7 +424,8 @@ class WorkerThread(QThread):
                 np.savetxt(self.main.Output_dir / gm_name / 'Sa.dat', np.array([Sa]))
             with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
                 f.write(str(collapsed))
-            os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
+            if self.main.script == 'tcl':
+                os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             time_gm_end = time.time()
             time_cost = time_gm_end - time_gm_start
             self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
@@ -427,24 +484,59 @@ class WorkerThread(QThread):
                 elif self.mainWin.intensity_measure == 2:
                     text_Sa = 'Sa,avg'
                 self.signal_add_log.emit(f'{text_Sa}：{Sa_current}g\n')
-                self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
-                cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
-                if self.mainWin.test:
-                    time.sleep(1)  # 模拟耗时工作
-                else:
-                    # 运行分析
-                    if self.mainWin.print_result:
-                        subprocess.call(cmd)
+                if self.main.script == 'tcl':
+                    self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
+                    cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+                    if self.mainWin.test:
+                        time.sleep(1)  # 模拟耗时工作
                     else:
-                        subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(1)
-                if os.path.exists(self.main.dir_temp/ f'{gm_name}_CollapseState.txt'):
-                    collapsed = 1
-                    self.signal_add_log.emit(f'倒塌：是\n')
-                    os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
+                        # 运行分析
+                        if self.mainWin.print_result:
+                            subprocess.call(cmd)
+                        else:
+                            subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if os.path.exists(self.main.dir_temp/ f'{gm_name}_CollapseState.txt'):
+                        collapsed = 1
+                        self.signal_add_log.emit(f'倒塌：是\n')
+                        os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
+                    else:
+                        collapsed = 0
+                        self.signal_add_log.emit(f'倒塌：否\n')
                 else:
-                    collapsed = 0
-                    self.signal_add_log.emit(f'倒塌：否\n')
+                    module = import_module(f'models.{self.main.model_name}')
+                    run_openseespy = getattr(module, 'run_openseespy')
+                    maxRunTime = self.main.maxRunTime
+                    EQorPO = 'EQ'
+                    if self.main.display:
+                        ShowAnimation = True
+                    else:
+                        ShowAnimation = False
+                    if self.main.mpco:
+                        MPCO = True
+                    else:
+                        MPCO = False
+                    MainFolder = self.main.Output_dir
+                    GMname = gm_name
+                    SubFolder = f'{gm_name}_{run_num+1}'
+                    GMdt = dt
+                    GMpoints = NPTS
+                    GMduration = duration
+                    FVduration = fv_duration
+                    EqSF = SF
+                    GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
+                    maxRoofDrift = 0.1
+                    paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+                    self.signal_send_openseespy_paras.emit(paras)
+                    result = run_openseespy(*paras)
+                    if result[2]:
+                        collapsed = 1  # 分析完成，倒塌
+                    else:
+                        collapsed = 0  # 分析完成，未倒塌
+                    if result[0] == 2:
+                        self.signal_add_warning(f'{gm_name}分析不收敛')
+                    elif result[0] == 3:
+                        self.signal_add_warning(f'{gm_name}超过最大分析时间')
                 if not os.path.exists(self.main.Output_dir / f'{gm_name}_{run_num+1}'):
                     os.makedirs(self.main.Output_dir / f'{gm_name}_{run_num+1}')
                 np.savetxt(self.main.Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
@@ -491,15 +583,11 @@ class WorkerThread(QThread):
                     self.signal_add_warning.emit(time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end)) + '\n')
                     self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
                     self.main.logger.warning(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
-            os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
+            if self.main.script == 'tcl':
+                os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             self.main.logger.success(f'第{idx+1}条地震动计算完成')
         else:
             self.signal_finished.emit(1)
-
-
-
-    def run_IDA_concurrency(self):
-        ...
 
 
 
@@ -515,25 +603,56 @@ class WorkerThread(QThread):
         self.signal_set_ui.emit((gm_name, '（仅IDA适用）', duration, dt, NPTS))
         time_gm_start = time.time()
         self.signal_add_log.emit(f'开始：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_start))}\n')
-        self.modify_tcl(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-        cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
-        # 运行分析
-        if self.mainWin.print_result:
-            subprocess.call(cmd)
+        if self.main.script == 'tcl':
+            self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
+            cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+            # 运行分析
+            if self.mainWin.print_result:
+                subprocess.call(cmd)
+            else:
+                subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            module = import_module(f'models.{self.main.model_name}')
+            run_openseespy = getattr(module, 'run_openseespy')
+            maxRunTime = self.main.maxRunTime
+            EQorPO = 'PO'
+            if self.main.display:
+                ShowAnimation = True
+            else:
+                ShowAnimation = False
+            if self.main.mpco:
+                MPCO = True
+            else:
+                MPCO = False
+            MainFolder = self.main.Output_dir
+            GMname = gm_name
+            SubFolder = gm_name
+            GMdt = dt
+            GMpoints = NPTS
+            GMduration = duration
+            FVduration = fv_duration
+            EqSF = SF
+            GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
+            maxRoofDrift = self.main.maxRoofDrift
+            paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                        GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+            self.signal_send_openseespy_paras.emit(paras)
+            result = run_openseespy(*paras)
+            if result[0] == 2:
+                self.signal_add_warning(f'{gm_name}分析不收敛')
+            elif result[0] == 3:
+                self.signal_add_warning(f'{gm_name}超过最大分析时间')
         if not os.path.exists(self.main.Output_dir / gm_name):
             os.makedirs(self.main.Output_dir / gm_name)
         with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
-            f.write('2')
+            f.write('2')            
         time_gm_end = time.time()
         elapsed_time = time_gm_end - time_gm_start
         self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
         self.signal_add_log.emit(f'耗时：{round(elapsed_time, 2)}s\n\n')
         self.signal_finished.emit(1)
-        os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.tcl')
-
-
+        if self.main.script == 'tcl':
+            os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.tcl')
 
 
     @staticmethod
@@ -555,26 +674,6 @@ class WorkerThread(QThread):
         for i in data:
             total *= i
         return pow(total, 1 / len(data))
-
-
-# class WorkerThread_sub(QThread):
-#     """opensees求解线程-并发计算子线程
-#     """
-
-#     signal_set_ui = pyqtSignal(tuple)  # 运行过程中显式dt，NPTS等
-#     signal_set_progressBar = pyqtSignal(tuple)  # 运行过程中设置进度条
-#     signal_finished = pyqtSignal(int)  # 运行完成
-#     signal_add_log = pyqtSignal(str)  # 增加日志内容
-#     signal_add_warning = pyqtSignal(str)  # 增加警告内容
-
-#     def __init__(self, main, mainWin: MyWin):
-#         super().__init__()
-#         self.main = main
-#         self.mainWin = mainWin
-#         self.model_name = self.main.model_name
-#         self.OS_path: str = main.OS_path
-#         self.is_kill = 0
-
 
 
 
