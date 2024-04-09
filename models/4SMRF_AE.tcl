@@ -14,31 +14,35 @@ set global MaxRunTime;
 set MaxRunTime 600.0;  # $$$
 set StartTime [clock seconds];
 set RunTime 0.0;
-set  EQ 1;  # Regular expression anchor
-set  PO 0;  # Regular expression anchor
-set  ShowAnimation 1;
+set EQ 1;  # $$$
+set PO 0;  # $$$
+set ShowAnimation 1;  # $$$
+set MPCO 0;  # $$$
 
 # Ground motion information
-set MainFolder "H:/MRF_results/test/4SMRF";
-set GMname "th5";
-set SubFolder "th5";
-set GMdt 0.01;
-set GMpoints 5590;
-set GMduration 55.89;
-set FVduration 30;
-set EqSF 2.0;
-set GMFile "GMs/$GMname.th";
+set MainFolder "H:/MRF_results/test/4SMRF";  # $$$
+set GMname "th5";  # $$$
+set SubFolder "th5";  # $$$
+set GMdt 0.01;  # $$$
+set GMpoints 5590;  # $$$
+set GMduration 55.89;  # $$$
+set FVduration 30;  # $$$
+set EqSF 2.0;  # $$$
+set GMFile "F:/MRF/GMs/$GMname.th";  # $$$
+set subroutines "F:/MRF/subroutines";  # $$$
+set temp "F:/MRF/temp";  # $$$
 
 # Sourcing subroutines
+cd $subroutines;
 source DisplayModel3D.tcl;
 source DisplayPlane.tcl;
 source Spring_Zero.tcl;
 source Spring_Rigid.tcl;
-source ConstructPanel_Rectangle.tcl;
-source DynamicAnalysisCollapseSolverX.tcl;
 source PanelZone.tcl
 source BeamHinge.tcl
 source ColumnHinge.tcl
+source TimeHistorySolver.tcl;
+source PushoverAnalysis.tcl;
 
 # Results folders
 file mkdir $MainFolder;
@@ -74,7 +78,7 @@ set Axis4 18300.0;
 set Axis5 24400.0;
 
 set HBuilding 16300.0;
-variable HBuilding 16300.0;
+set story_heights [list 4300 4000 4000 4000];
 
 
 # ------------------------------------ Nodes -------------------------------------
@@ -288,17 +292,16 @@ recorder Element -file $MainFolder/$SubFolder/BeamSpring3_1R.out -ele 10030109 m
 recorder Element -file $MainFolder/$SubFolder/BeamSpring4_1R.out -ele 10040109 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring4_2L.out -ele 10040210 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring4_2R.out -ele 10040209 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring4_3L.out -ele 10040310 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring4_3R.out -ele 10040309 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring4_4L.out -ele 10040410 material 3 stressStrain;
 recorder Element -file $MainFolder/$SubFolder/BeamSpring5_1R.out -ele 10050109 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring5_2L.out -ele 10050210 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring5_2R.out -ele 10050209 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring5_3L.out -ele 10050310 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring5_3R.out -ele 10050309 material 3 stressStrain;  recorder Element -file $MainFolder/$SubFolder/BeamSpring5_4L.out -ele 10050410 material 3 stressStrain;
 
-# Panel zone spring forces (if any)
-recorder Element -file $MainFolder/$SubFolder/PZ21_F.out -ele 11020100 force;  recorder Element -file $MainFolder/$SubFolder/PZ22_F.out -ele 11020200 force;  recorder Element -file $MainFolder/$SubFolder/PZ23_F.out -ele 11020300 force;  recorder Element -file $MainFolder/$SubFolder/PZ24_F.out -ele 11020400 force;
-recorder Element -file $MainFolder/$SubFolder/PZ31_F.out -ele 11030100 force;  recorder Element -file $MainFolder/$SubFolder/PZ32_F.out -ele 11030200 force;  recorder Element -file $MainFolder/$SubFolder/PZ33_F.out -ele 11030300 force;  recorder Element -file $MainFolder/$SubFolder/PZ34_F.out -ele 11030400 force;
-recorder Element -file $MainFolder/$SubFolder/PZ41_F.out -ele 11040100 force;  recorder Element -file $MainFolder/$SubFolder/PZ42_F.out -ele 11040200 force;  recorder Element -file $MainFolder/$SubFolder/PZ43_F.out -ele 11040300 force;  recorder Element -file $MainFolder/$SubFolder/PZ44_F.out -ele 11040400 force;
-recorder Element -file $MainFolder/$SubFolder/PZ51_F.out -ele 11050100 force;  recorder Element -file $MainFolder/$SubFolder/PZ52_F.out -ele 11050200 force;  recorder Element -file $MainFolder/$SubFolder/PZ53_F.out -ele 11050300 force;  recorder Element -file $MainFolder/$SubFolder/PZ54_F.out -ele 11050400 force;
+# Panel zone springs (if any)
+recorder Element -file $MainFolder/$SubFolder/PZ2_1.out -ele 11020100 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ2_2.out -ele 11020200 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ2_3.out -ele 11020300 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ2_4.out -ele 11020400 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/PZ3_1.out -ele 11030100 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ3_2.out -ele 11030200 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ3_3.out -ele 11030300 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ3_4.out -ele 11030400 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/PZ4_1.out -ele 11040100 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ4_2.out -ele 11040200 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ4_3.out -ele 11040300 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ4_4.out -ele 11040400 material 1 stressStrain;
+recorder Element -file $MainFolder/$SubFolder/PZ5_1.out -ele 11050100 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ5_2.out -ele 11050200 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ5_3.out -ele 11050300 material 1 stressStrain;  recorder Element -file $MainFolder/$SubFolder/PZ5_4.out -ele 11050400 material 1 stressStrain;
 
-# Panel zone spring deforamtions (if any)
-recorder Element -file $MainFolder/$SubFolder/PZ21_D.out -ele 11020100 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ22_D.out -ele 11020200 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ23_D.out -ele 11020300 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ24_D.out -ele 11020400 deformation;
-recorder Element -file $MainFolder/$SubFolder/PZ31_D.out -ele 11030100 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ32_D.out -ele 11030200 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ33_D.out -ele 11030300 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ34_D.out -ele 11030400 deformation;
-recorder Element -file $MainFolder/$SubFolder/PZ41_D.out -ele 11040100 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ42_D.out -ele 11040200 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ43_D.out -ele 11040300 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ44_D.out -ele 11040400 deformation;
-recorder Element -file $MainFolder/$SubFolder/PZ51_D.out -ele 11050100 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ52_D.out -ele 11050200 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ53_D.out -ele 11050300 deformation;  recorder Element -file $MainFolder/$SubFolder/PZ54_D.out -ele 11050400 deformation;
+# MPCO recorder
+if {$MPCO == 1} {
+    recorder mpco $MainFolder$SubFolder/result.mpco -N displacement acceleration modesOfVibration -E material.stress material.strain;
+}
 
 # ------------------------------------- Mass -------------------------------------
 
@@ -363,6 +366,7 @@ pattern Plain 100 Linear {
 
 }
 
+wipeAnalysis
 constraints Plain;
 numberer RCM;
 system BandGeneral;
@@ -401,7 +405,14 @@ if {$EQ == 1} {
     set NumSteps [expr round(($GMduration + $FVduration)/$GMdt)];
     set totTime [expr $GMdt*$NumSteps];
     set dtAnalysis [expr 1.0*$GMdt];
-    DynamicAnalysisCollapseSolverX $GMdt $dtAnalysis $totTime $NStory 0.15 $MF_FloorNodes $MF_FloorNodes 4300.0 4000.0 1 $StartTime $MaxRunTime $GMname;
+    set CollapseDrift 0.1;
+    set MaxAnalysisDrift 0.5;
+    set maxRunTime 600.0;
+    set result [TimeHistorySolver $GMdt $GMduration $story_heights $MF_FloorNodes $CollapseDrift $MaxAnalysisDrift $GMname $maxRunTime $temp];
+    set status [lindex $result 0];
+    set controlled_time [lindex $result 1];
+    puts "Running status: $status";
+    puts "Controlled time: $controlled_time";
 
 }
 
@@ -430,14 +441,16 @@ if {$PO == 1} {
         load 11050204 $F5 0.0 0.0;
     };
     set CtrlNode 11050204;
-    set CtrlDOF 1;
-    set Dmax [expr 0.100*$Floor5];
+    set maxRoofDrift 0.1;  # $$$
+    set Dmax [expr $maxRoofDrift * $Floor5];
     set Dincr [expr 0.5];
-    set Nsteps [expr int($Dmax/$Dincr)];
-    set ok 0;
-    set controlDisp 0.0;
-    source LibAnalysisStaticParameters.tcl;
-    source SolutionAlgorithm.tcl;
+    set maxRunTime 600.0;
+    set result [PushoverAnalysis $CtrlNode $Dmax $Dincr $maxRunTime];
+    set status [lindex $result 0];
+    set roofDisp [lindex $result 1];
+    puts "Running status: $status";
+    puts "Roof displacement: $roofDisp";
+    puts "Roof drift ratio: [expr $roofDisp / $HBuilding]";
 
 }
 
@@ -447,7 +460,7 @@ wipe all;
 #
 # Moment resisting frame model information
 # Frame name: 4SMRF_AE
-# Generation time: 2024-04-08 22:19:06.772203
+# Generation time: 2024-04-09 01:08:13.989681
 # All units are in [N, mm, t]
 # 
 # 

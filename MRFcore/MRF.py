@@ -86,6 +86,7 @@ class MRF:
         self.suffix = '.txt'
         self.Output_dir = self.cwd
         self.do_not_run = False  # 运行分析
+        self.maxRoofDrift = 0.1  # Pushover分析的目标层间位移角
         self._init_set_QApp()
         self._check_version()
         self.logger.success(f'已定义模型：{self.model_name}')
@@ -519,15 +520,17 @@ class MRF:
             f.write('IDA')
         self._exec_win(running_case='IDA', IDA_para=IDA_para, print_result=print_result, concurrency=concurrency)
 
-    def run_pushover(self, print_result=False):
+    def run_pushover(self, maxRoofDrift: float=0.1, print_result=False):
         """运行pushover分析
 
         Args:
+            maxRoofDrift (float): 目标最大层间位移角
             print_result (bool, optional): 是否打印OpenSees输出的内容，默认为False
         """
         if self.do_not_run:
             return
         self.logger.info('开始进行Pushover分析')
+        self.maxRoofDrift = maxRoofDrift
         with open(f'{self.Output_dir}/ground_motions.dat', 'w') as f:
             f.write('pushover')
         IDA_para = None

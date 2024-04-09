@@ -23,7 +23,7 @@ proc TimeHistorySolver {
     dt_init duration story_heights ctrl_nodes CollapseDrift MaxAnalysisDrift
     GMname maxRunTime temp {min_factor 1e-6} {max_factor 1}} {
 
-    set algorithms [list KrylovNewton NewtonLineSearch Newton SecantNewton];
+    set ls_algorithms [list KrylovNewton NewtonLineSearch Newton SecantNewton];
     set Id_algorithm 0;
 
     wipeAnalysis
@@ -83,7 +83,7 @@ proc TimeHistorySolver {
                     puts "Cannot converge"
                     return [list 3 [getTime]]
                 }
-                puts "-- [getTime] ------ Switched algorithm: [lindex $algorithms $Id_algorithm]"
+                puts "-- [getTime] ------ Switched algorithm: [lindex $ls_algorithms $Id_algorithm]"
             }
             puts "-- [getTime] -- Reduced factor: $factor"
         }
@@ -92,7 +92,7 @@ proc TimeHistorySolver {
             set dt [expr $duration - [getTime]]
             if {[expr abs($dt)] < 1e-8} {return [list 1 [getTime]]}
         }
-        algorithm [lindex $algorithms $Id_algorithm]
+        algorithm [lindex $ls_algorithms $Id_algorithm]
         incr nstep
     }
 }

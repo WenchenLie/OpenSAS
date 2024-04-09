@@ -155,8 +155,12 @@ class MyWin(QDialog):
         self.thread_run.start()
 
     def copy_current_tcl_file(self):
-        with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.tcl', 'r') as f:
-            text = f.read()
+        if self.running_case == 'pushover':
+            with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.tcl', 'r') as f:
+                text = f.read()
+        else:
+            with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.tcl', 'r') as f:
+                text = f.read()
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
         self.add_log('已复制tcl代码\n')
@@ -286,6 +290,9 @@ class WorkerThread(QThread):
             text = pattern.sub(r'set MPCO 1;  # $$$', text)
         else:
             text = pattern.sub(r'set MPCO 0;  # $$$', text)
+        pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(self.main.maxRoofDrift) + r'\g<2>', text)
         with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
@@ -524,6 +531,7 @@ class WorkerThread(QThread):
         self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
         self.signal_add_log.emit(f'耗时：{round(elapsed_time, 2)}s\n\n')
         self.signal_finished.emit(1)
+        os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.tcl')
 
 
 

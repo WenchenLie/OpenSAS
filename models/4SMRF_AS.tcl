@@ -42,6 +42,7 @@ source PanelZone.tcl
 source BeamHinge.tcl
 source ColumnHinge.tcl
 source TimeHistorySolver.tcl;
+source PushoverAnalysis.tcl;
 
 # Results folders
 file mkdir $MainFolder;
@@ -365,6 +366,7 @@ pattern Plain 100 Linear {
 
 }
 
+wipeAnalysis
 constraints Plain;
 numberer RCM;
 system BandGeneral;
@@ -439,14 +441,16 @@ if {$PO == 1} {
         load 11050204 $F5 0.0 0.0;
     };
     set CtrlNode 11050204;
-    set CtrlDOF 1;
-    set Dmax [expr 0.100*$Floor5];
+    set maxRoofDrift 0.1;  # $$$
+    set Dmax [expr $maxRoofDrift * $Floor5];
     set Dincr [expr 0.5];
-    set Nsteps [expr int($Dmax/$Dincr)];
-    set ok 0;
-    set controlDisp 0.0;
-    source LibAnalysisStaticParameters.tcl;
-    source SolutionAlgorithm.tcl;
+    set maxRunTime 600.0;
+    set result [PushoverAnalysis $CtrlNode $Dmax $Dincr $maxRunTime];
+    set status [lindex $result 0];
+    set roofDisp [lindex $result 1];
+    puts "Running status: $status";
+    puts "Roof displacement: $roofDisp";
+    puts "Roof drift ratio: [expr $roofDisp / $HBuilding]";
 
 }
 
@@ -456,7 +460,7 @@ wipe all;
 #
 # Moment resisting frame model information
 # Frame name: 4SMRF_AS
-# Generation time: 2024-04-08 22:19:12.551596
+# Generation time: 2024-04-09 01:08:09.868941
 # All units are in [N, mm, t]
 # 
 # 
