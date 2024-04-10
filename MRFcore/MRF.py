@@ -400,18 +400,25 @@ class MRF:
     def _check_Output_dir(self):
         # 判断输出文件夹是否存在
         if os.path.exists(self.Output_dir):
-            res1 = QMessageBox.question(None, '警告', f'{self.Output_dir}已存在，是否删除？')
-            if res1 == QMessageBox.Yes:
+            if self.folder_exists == 'ask':
+                res1 = QMessageBox.question(None, '警告', f'{self.Output_dir}已存在，是否删除？')
+                if res1 == QMessageBox.Yes:
+                    shutil.rmtree(self.Output_dir)
+                    os.makedirs(self.Output_dir)
+                    return True
+                else:
+                    res2 = QMessageBox.question(None, '警告', f'是否覆盖数据？')
+                    if res2 == QMessageBox.Yes:
+                        return True
+                    else:
+                        self.logger.warning('已退出分析')
+                        return False
+            elif self.folder_exists == 'overwrite':
+                return True
+            elif self.folder_exists == 'delete':
                 shutil.rmtree(self.Output_dir)
                 os.makedirs(self.Output_dir)
                 return True
-            else:
-                res2 = QMessageBox.question(None, '警告', f'是否覆盖数据？')
-                if res2 == QMessageBox.Yes:
-                    return True
-                else:
-                    self.logger.warning('已退出分析')
-                    return False
         else:
             os.makedirs(self.Output_dir)
             return True
@@ -420,7 +427,8 @@ class MRF:
     def set_running_parameters(
             self, Output_dir: str | Path=None, OS_terminal: str='OpenSees351',
             fv_duration=0.0, display=True, mpco=False, log_name='日志',
-            maxRunTime: float=600, auto_quit: bool=False):
+            maxRunTime: float=600, auto_quit: bool=False,
+            folder_exists: Literal['ask', 'overwrite', 'delete']='ask'):
         """设置运行参数
 
         Args:
@@ -435,12 +443,17 @@ class MRF:
             maxRunTime (float): 最大允许运行时间(s)，默认600s  
             maxRunTime (float): 最大允许运行时间(s)，默认600s  
             auto_quit (bool): 计算完成时是否自动关闭监控窗口，默认False  
+            folder_exists (bool): 如果输出文件夹存在，如何处理。ask-询问，overwrite-覆盖，delete-删除
         """
+        if self.script == 'py' and display:
+            logger.warning('使用openseespy时暂时无法显示实时变形动画')
+            display = False
         self.display = display
         self.mpco = mpco
         self.log_name = log_name
         self.maxRunTime = maxRunTime
         self.auto_quit = auto_quit
+        self.folder_exists = folder_exists
         if Output_dir:
             Output_dir = Path(Output_dir).absolute()
             self.Output_dir = Output_dir
@@ -481,7 +494,7 @@ class MRF:
     def run_IDA(
             self, T0: float, Sa0: float, Sa_incr: float, tol: float, max_ana=30, test=False,
             intensity_measure: Literal[1, 2]=1, T_range: tuple=None, print_result=False,
-            trace_collapse: bool=True, concurrency:int=None):
+            trace_collapse: bool=True, parallel: int=0):
         """IDA分析
 
         Args:
@@ -498,13 +511,16 @@ class MRF:
             T_range (tuple, optional): 周期范围，默认None，当`intensity_measure`为2时生效  
             print_result (bool, optional): 是否打印opensees终端输出的结果，默认不打印  
             trace_collapse (bool): 是否追踪倒塌（若否则不动态调整地震动强度指标）  
-            concurrency (int): 同时并发运行的数量(仅IDA适用)，默认None(该功能暂未写好)  
-            如果为None，则在VsCode终端上运行，否则则在新的系统终端运行  
+            parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，位其他数时代表最大进程数
         """
         if self.do_not_run:
             return
+        if self.script == 'tcl' and parallel:
+            self.logger.warning('多进程目前仅支持使用openseespy脚本，将退出分析')
+            return
         self.logger.info('开始进行IDA')
         self.trace_collapse = trace_collapse
+        self.parallel = parallel
         # 计算无缩放反应谱
         T = np.arange(0, 6.02, 0.01)
         self.T = T
@@ -519,7 +535,7 @@ class MRF:
         IDA_para = (T0, self.GM_RSA, Sa0, Sa_incr, tol, max_ana, test, intensity_measure, T_range)
         with open(f'{self.Output_dir}/running_case.dat', 'w') as f:
             f.write('IDA')
-        self._exec_win(running_case='IDA', IDA_para=IDA_para, print_result=print_result, concurrency=concurrency)
+        self._exec_win(running_case='IDA', IDA_para=IDA_para, print_result=print_result)
 
 
     def run_pushover(self, maxRoofDrift: float=0.1, print_result=False):
@@ -541,12 +557,12 @@ class MRF:
         self._exec_win(running_case='pushover', IDA_para=IDA_para, print_result=print_result)
 
 
-    def _exec_win(self, running_case: str, IDA_para: tuple, print_result: bool, concurrency=None):
+    def _exec_win(self, running_case: str, IDA_para: tuple, print_result: bool):
         if not self.dir_temp.exists():
             os.makedirs(self.dir_temp)
         if not self.dir_log.exists():
             os.makedirs(self.dir_log)
-        myshow = MyWin(self, running_case, IDA_para=IDA_para, print_result=print_result, concurrency=None)
+        myshow = MyWin(self, running_case, IDA_para=IDA_para, print_result=print_result)
         myshow.show()
         self.app.exec_()
 
