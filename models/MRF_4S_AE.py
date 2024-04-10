@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------------
 
 import os
+import numpy as np
 from pathlib import Path
 import openseespy.opensees as ops
 from subroutines.BeamHinge import BeamHinge
@@ -13,7 +14,7 @@ from subroutines.Spring_Zero import Spring_Zero
 from subroutines.Spring_Rigid import Spring_Rigid
 from subroutines.TimeHistorySolver import TimeHistorySolver
 from subroutines.PushoverAnalysis import PushoverAnalysis
-import time
+from subroutines.DisplayModel2D import DisplayModel2D
 from math import pi
 from typing import Literal
 
@@ -714,6 +715,8 @@ def run_openseespy(
 
     # ---------------------------- Time history analysis -----------------------------
 
+    MF_FloorNodes = [11020204, 11030204, 11040204, 11050204]
+
     if EQorPO == "EQ":
         # Rayleigh damping
         zeta = 0.02
@@ -731,14 +734,17 @@ def run_openseespy(
         # Ground motion acceleration file input
         ops.timeSeries("Path", 200, "-dt", GMdt, "-filePath", GMFile, "-factor", EqSF * g)
         ops.pattern("UniformExcitation", 200, 1, "-accel", 200)
-        MF_FloorNodes = [11020204, 11030204, 11040204, 11050204]
         totalTime = GMduration + FVduration
         CollapseDrift = 0.1
         MaxAnalysisDrift = 0.5
-        result = TimeHistorySolver(GMdt, totalTime, story_height, MF_FloorNodes, CollapseDrift, MaxAnalysisDrift, GMname, maxRunTime)
+        result = TimeHistorySolver(GMdt, totalTime, story_height, MF_FloorNodes, CollapseDrift, MaxAnalysisDrift, GMname, maxRunTime, ShowAnimation)
         print(f"Running status: {result[0]}")
         print(f"Control time: {result[1]}")
         print(f"Collapse: {bool(result[2])}")
+        for i in range(NStory):
+            SDR = result[3][:, i]
+            np.savetxt(MainFolder/SubFolder/f"SDR{i+1}.out", SDR, fmt="%.6f")
+        np.savetxt(MainFolder/SubFolder/f"SDR_Roof.out", result[4], fmt="%.6f")
     
     # ------------------------------ Pushover analysis -------------------------------
 
@@ -761,15 +767,18 @@ def run_openseespy(
         ops.load(11030204, F3, 0.0, 0.0)
         ops.load(11040204, F4, 0.0, 0.0)
         ops.load(11050204, F5, 0.0, 0.0)
-        CtrlNode = 11050204
         Dmax = maxRoofDrift * Floor5
         Dincr = 0.5
-        result = PushoverAnalysis(CtrlNode, Dmax, Dincr, maxRunTime)
+        result = PushoverAnalysis(MF_FloorNodes, story_height, Dmax, Dincr, maxRunTime, ShowAnimation)
         status = result[0]
         roofDisp = result[1]
         print(f"Running status: {status}")
         print(f"Roof displacement: {roofDisp}")
         print(f"Roof drift ratio: {roofDisp / HBuilding}")
+        for i in range(NStory):
+            SDR = result[2][:, i]
+            np.savetxt(MainFolder/SubFolder/f"SDR{i+1}.out", SDR, fmt="%.6f")
+        np.savetxt(MainFolder/SubFolder/f"SDR_Roof.out", result[3], fmt="%.6f")
 
     return result
 
@@ -779,7 +788,7 @@ def run_openseespy(
 #
 # Moment resisting frame model information
 # Frame name: MRF_4S_AE
-# Generation time: 2024-04-10 02:55:45.445817
+# Generation time: 2024-04-10 23:37:34.532016
 # All units are in [N, mm, t]
 # 
 # 

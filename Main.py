@@ -26,15 +26,15 @@ if __name__ == "__main__":
     notes = """
     """  # 模型说明
     model = MRF('MRF_4S_AE', N=4, notes=notes, script='py')
-    # model.select_ground_motions([f'th{i}' for i in range(1, 7)], suffix='.th')
-    model.select_ground_motions(['th2'], suffix='.th') 
+    model.select_ground_motions([f'th{i}' for i in range(1, 7)], suffix='.th')
+    # model.select_ground_motions(['th2'], suffix='.th') 
     T1 = 1.397
     model.scale_ground_motions('data/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF_AE', fv_duration=0, display=False, log_name='日志', auto_quit=False)
+    model.set_running_parameters(Output_dir='H:/MRF_results/test/4SMRF_AE', fv_duration=0, display=False, log_name='日志', auto_quit=True)
     # model.run_time_history(print_result=True)
-    # model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=5, intensity_measure=1, trace_collapse=False)
-    model.run_pushover(print_result=True)
-    QuakeReadPushover('H:/MRF_results/test/4SMRF_AE')
+    model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=3, intensity_measure=1, trace_collapse=True, parallel=3)
+    # model.run_pushover(print_result=True)
+    # QuakeReadPushover('H:/MRF_results/test/4SMRF_AE')
 
 
 """

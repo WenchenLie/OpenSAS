@@ -5,11 +5,13 @@ if TYPE_CHECKING:
 import os
 import re
 import time
-import shutil
+import multiprocessing
 import subprocess
 import numpy as np
 from pathlib import Path
+from typing import Literal
 from importlib import import_module
+from collections.abc import Callable
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
 from ui.Win_running import Ui_Win_running
@@ -24,7 +26,7 @@ from ui.Win_running import Ui_Win_running
 
 class MyWin(QDialog):
 
-    def __init__(self, main: MRF, running_case: str, IDA_para: tuple, print_result: bool, concurrency: int=None):
+    def __init__(self, main: MRF, running_case: str, IDA_para: tuple, print_result: bool):
         """IDA分析
 
         Args:
@@ -43,7 +45,6 @@ class MyWin(QDialog):
                 * 2 - Sa,avg 
             * `T_range`: 当`intensity_measure`为2时，给定的周期范围\n
             print_result (bool): 是否打印结果\n
-            concurrency (int): 并发运行的数量
         """
         super().__init__()
         self.ui = Ui_Win_running()
@@ -54,7 +55,6 @@ class MyWin(QDialog):
         if IDA_para:
             self.T0, self.RSA, self.Sa0, self.Sa_incr, self.tol, self.max_ana, self.test, self.intensity_measure, self.T_range = IDA_para
         self.print_result = print_result  # 是否输出运行过程中的消息
-        self.concurrency = concurrency
         self.openseespy_paras = None
         self.ui.setupUi(self)
         self.init_ui()
@@ -332,8 +332,10 @@ class WorkerThread(QThread):
     def run(self):
         if self.mainWin.running_case == 'th':
             self.run_th()
-        elif self.mainWin.running_case == 'IDA':
+        elif self.mainWin.running_case == 'IDA' and not self.main.parallel:
             self.run_IDA()
+        elif self.mainWin.running_case == 'IDA' and self.main.parallel:
+            self.run_IDA_parallel(self.main.parallel)
         elif self.mainWin.running_case == 'pushover':
             self.run_pushover()
 
@@ -455,7 +457,6 @@ class WorkerThread(QThread):
                 Sa_original = self.Sa(T, RSA, self.mainWin.T0)  # 以Sa(T)作为地震动强度指标
             elif self.mainWin.intensity_measure == 2:
                 Ta, Tb = self.mainWin.T_range
-                RSA = self.mainWin.RSA[idx]
                 Sa_range = RSA[(Ta <= T) & (T <= Tb)]
                 Sa_avg = self.geometric_mean(Sa_range)  # 简单几何平均数
                 Sa_original = Sa_avg  
@@ -590,6 +591,51 @@ class WorkerThread(QThread):
             self.signal_finished.emit(1)
 
 
+    def run_IDA_parallel(self, processes: int):
+        ls_paras = []
+        Sa0, Sa_incr, tol, max_ana = self.mainWin.Sa0, self.mainWin.Sa_incr, self.mainWin.tol, self.mainWin.max_ana
+        module = import_module(f'models.{self.main.model_name}')
+        run_openseespy = getattr(module, 'run_openseespy')
+        maxRunTime = self.main.maxRunTime
+        Output_dir = self.main.Output_dir
+        MainFolder = self.main.Output_dir
+        dir_gm = self.main.dir_gm
+        suffix = self.main.suffix
+        T0 = self.mainWin.T0
+        T_range = self.mainWin.T_range
+        T = self.main.T
+        intensity_measure = self.mainWin.intensity_measure
+        trace_collapse = self.main.trace_collapse
+        for idx in range(self.main.GM_N):
+            gm_name: str = self.main.GM_names[idx]
+            self.mainWin.current_gm = gm_name
+            dt: float = self.main.GM_dts[idx]
+            NPTS: int = self.main.GM_NPTS[idx]
+            duration: float = self.main.GM_durations[idx]
+            fv_duration: float = self.main.fv_duration
+            T: np.ndarray = self.main.T
+            RSA = self.mainWin.RSA[idx]
+            Sa_current = Sa0
+            if self.mainWin.intensity_measure == 1:
+                Sa_original = self.Sa(T, RSA, self.mainWin.T0)  # 以Sa(T)作为地震动强度指标
+            elif self.mainWin.intensity_measure == 2:
+                Ta, Tb = self.mainWin.T_range
+                Sa_range = RSA[(Ta <= T) & (T <= Tb)]
+                Sa_avg = self.geometric_mean(Sa_range)  # 简单几何平均数
+                Sa_original = Sa_avg  
+            self.signal_set_progressBar.emit((f'正在计算地震动：{idx+1}/{self.main.GM_N}', int(idx / self.main.GM_N * 100)))
+            iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
+            Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
+            paras = (run_openseespy, gm_name, dt, NPTS, duration, fv_duration, maxRunTime,
+                     Output_dir, MainFolder, dir_gm, suffix, T0, T_range, T, RSA,
+                     intensity_measure, Sa0, Sa_incr, tol, max_ana, trace_collapse)
+            ls_paras.append(paras)
+        with multiprocessing.Pool(processes) as pool:
+            results = pool.starmap(run_single_IDA, ls_paras)
+        print(results)
+        self.signal_finished.emit(1)
+    
+
 
     def run_pushover(self):
         self.main.logger.info(f'正在Pushover分析')
@@ -668,6 +714,7 @@ class WorkerThread(QThread):
         else:
             raise ValueError(f'无法找到周期点{T0}对应的加速度谱值！')
         
+        
     @staticmethod
     def geometric_mean(data):  # 计算几何平均数
         total = 1
@@ -676,4 +723,152 @@ class WorkerThread(QThread):
         return pow(total, 1 / len(data))
 
 
+def Sa(T: np.ndarray, S: np.ndarray, T0: float, withIdx=False) -> float:
+    for i in range(len(T) - 1):
+        if T[i] <= T0 <= T[i+1]:
+            k = (S[i+1] - S[i]) / (T[i+1] - T[i])
+            S0 = S[i] + k * (T0 - T[i])
+            if withIdx:
+                return S0, i
+            else:
+                return S0
+    else:
+        raise ValueError(f'无法找到周期点{T0}对应的加速度谱值！')
 
+
+def geometric_mean(data):  # 计算几何平均数
+    total = 1
+    for i in data:
+        total *= i
+    return pow(total, 1 / len(data))
+    
+
+def run_single_IDA(
+    run_openseespy: Callable,
+    gm_name: str,
+    dt: float,
+    NPTS: int,
+    duration: float,
+    fv_duration: float,
+    maxRunTime: float,
+    Output_dir: Path,
+    MainFolder: Path,
+    dir_gm: Path,
+    suffix: str,
+    T0: float,
+    T_range: tuple[float, float],
+    T: np.ndarray,
+    RSA: np.ndarray,
+    intensity_measure: Literal[1, 2],
+    Sa0: float,
+    Sa_incr: float,
+    tol: float,
+    max_ana: int,
+    trace_collapse: bool
+):
+    """计算单条地震动的IDA分析，
+    该函数仅用于多进程，无法详细地更新ui监控信息"""
+    # 计算单条地震动的IDA分析(该函数仅用于多进程)
+    Sa_current = Sa0
+    if intensity_measure == 1:
+        Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
+    elif intensity_measure == 2:
+        Ta, Tb = T_range
+        Sa_range = RSA[(Ta <= T) & (T <= Tb)]
+        Sa_avg = geometric_mean(Sa_range)  # 简单几何平均数
+        Sa_original = Sa_avg  
+    iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
+    Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
+    for run_num in range(max_ana):
+        # self.main.logger.info(f'\t第{idx+1}条地震动第{run_num+1}次计算')
+        Sa_current = round(Sa_current, 5)
+        SF = Sa_current / Sa_original
+        time_gm_start = time.time()
+        # if self.main.script == 'tcl':
+        #     self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
+        #     cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+        #     if self.mainWin.test:
+        #         time.sleep(1)  # 模拟耗时工作
+        #     else:
+        #         # 运行分析
+        #         if self.mainWin.print_result:
+        #             subprocess.call(cmd)
+        #         else:
+        #             subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        #     if os.path.exists(self.main.dir_temp/ f'{gm_name}_CollapseState.txt'):
+        #         collapsed = 1
+        #         self.signal_add_log.emit(f'倒塌：是\n')
+        #         os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
+        #     else:
+        #         collapsed = 0
+        #         self.signal_add_log.emit(f'倒塌：否\n')
+        # maxRunTime
+        EQorPO = 'EQ'
+        ShowAnimation = False
+        MPCO = False
+        # MainFolder
+        GMname = gm_name
+        SubFolder = f'{gm_name}_{run_num+1}'
+        GMdt = dt
+        GMpoints = NPTS
+        GMduration = duration
+        FVduration = fv_duration
+        EqSF = SF
+        GMFile = dir_gm / f'{gm_name}{suffix}'
+        maxRoofDrift = 0.1
+        paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+        result = run_openseespy(*paras)
+        if result[2]:
+            collapsed = 1  # 分析完成，倒塌
+        else:
+            collapsed = 0  # 分析完成，未倒塌
+        if result[0] == 2:
+            # self.signal_add_warning(f'{gm_name}分析不收敛')
+            pass  # TODO 发送信号
+        elif result[0] == 3:
+            # self.signal_add_warning(f'{gm_name}超过最大分析时间')
+            pass  # TODO 发送信号
+        if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
+            os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
+        np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
+        with open(Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
+            f.write(str(collapsed))
+        time_gm_end = time.time()
+        time_cost = time_gm_end - time_gm_start
+        # self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
+        # self.signal_add_log.emit(f'该地震动已计算次数：{run_num+1}\n')
+        # self.signal_add_log.emit(f'该地震动计算耗时：{round(time_cost, 2)}s\n\n')
+        if trace_collapse:
+            # 追踪倒塌
+            if run_num == 0 and collapsed == 1:
+                # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
+                return  # TODO
+            if collapsed == 0 and iter_state == 0:
+                # 如果未倒塌，且不处于迭代状态
+                Sa_l = Sa_current
+                Sa_current += Sa_incr
+            else:
+                # 在迭代状态下，即已经出现过倒塌后
+                iter_state = 1  # 进入迭代状态
+                if collapsed == 1:
+                    # 若迭代状态下倒塌，更新最小倒塌强度
+                    Sa_r = min(Sa_current, Sa_r)
+                else:
+                    # 若迭代状态下未倒塌，更新最大未倒塌强度
+                    Sa_l = max(Sa_current, Sa_l)
+                if Sa_l > Sa_r:
+                    raise ValueError('最小倒塌强度大于最大未倒塌强度!')
+                if Sa_r - Sa_l < tol:
+                    return  # 满足收敛容差，完成当前地震动分析 # TODO
+                Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
+        else:
+            # 不追踪倒塌
+            Sa_current += Sa_incr
+    else:
+        # 超过最大计算次数
+        if trace_collapse:
+            # self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
+            pass  # TODO 发送信号
+    # self.main.logger.success(f'第{idx+1}条地震动计算完成')  # TODO 发送信号
+        return  # TODO
