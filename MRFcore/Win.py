@@ -1,12 +1,15 @@
 from __future__ import annotations
+import multiprocessing.queues
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .MRF import MRF
 import os
+import sys
 import re
 import time
 import multiprocessing
 import subprocess
+import datetime
 import numpy as np
 from pathlib import Path
 from typing import Literal
@@ -62,6 +65,7 @@ class MyWin(QDialog):
 
     def init_ui(self):
         self.setWindowFlags(Qt.WindowMinMaxButtonsHint)
+        self.set_ui_progrsssBar(('初始化中...', 0))
         if self.running_case == 'th':
             self.ui.label_3.setText('正在运行：时程分析')
             self.ui.label_19.setEnabled(False)
@@ -70,7 +74,10 @@ class MyWin(QDialog):
             self.ui.label_9.setEnabled(False)
             self.add_log('运行工况：时程分析\n')
         elif self.running_case == 'IDA':
-            self.ui.label_3.setText('正在运行：IDA')
+            if self.main.parallel:
+                self.ui.label_3.setText('正在运行：多进程IDA')
+            else:
+                self.ui.label_3.setText('正在运行：IDA')
             self.ui.label_20.setText('')
             self.add_log('运行工况：IDA\n')
         elif self.running_case == 'pushover':
@@ -82,6 +89,8 @@ class MyWin(QDialog):
             self.add_log('脚本类型：tcl\n')
         else:
             self.add_log('脚本类型：openseespy\n')
+        if self.main.parallel:
+            self.add_log(f'并行计算核心数：{self.main.parallel}\n')
         self.add_log(f'总地震动数量：{self.main.GM_N}\n')
         self.add_log(f'输出文件夹：{self.main.Output_dir}\n')
         self.time_project_begin = time.time()
@@ -162,6 +171,9 @@ class MyWin(QDialog):
         self.thread_run.start()
 
     def copy_current_script(self):
+        if self.main.parallel > 0:
+            QMessageBox.warning(self, '警告', '多进程计算不支持查看运行代码！')
+            return
         if self.main.script == 'tcl':
             if self.running_case == 'pushover':
                 with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.{self.main.script}', 'r') as f:
@@ -184,6 +196,7 @@ class MyWin(QDialog):
         if self.thread_run:
             if QMessageBox.question(self, '警告', '是否中断计算？\n（在计算完该地震动后）') == QMessageBox.Yes:
                 self.thread_run.is_kill = 1
+                self.thread_run.stop_event.set()
                 self.add_log('在计算完该地震动后将中断计算!\n')
 
     def add_log(self, text_add):
@@ -209,7 +222,7 @@ class MyWin(QDialog):
 
 
 class WorkerThread(QThread):
-    """opensees求解线程
+    """opensees求解子线程
     """
 
     signal_set_ui = pyqtSignal(tuple)  # 运行过程中显示dt，NPTS等
@@ -227,9 +240,10 @@ class WorkerThread(QThread):
         self.model_name = self.main.model_name
         self.OS_path: str = main.OS_path
         self.is_kill = 0
+        self.stop_event = multiprocessing.Manager().Event()
 
 
-    def modify_script(self, Output_dir: Path, gm_name: str, dt: str | float,
+    def modify_script1(self, Output_dir: Path, gm_name: str, dt: str | float,
                    NPTS: int | float, duration: float | str,
                    fv_duration: float | str, SF: float | str, num: int=None):
         """采用正则表达式修改脚本文件(仅当采用tcl脚本时需要修改)
@@ -316,6 +330,99 @@ class WorkerThread(QThread):
         with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
+
+    @staticmethod
+    def modify_script(
+        dir_model: Path, model_name: Path, maxRunTime: float, running_case: str,
+        dir_gm: Path, dir_subroutines: Path, dir_temp: Path, suffix: str, display: bool, mpco: bool, maxRoofDrift: float,
+        Output_dir: Path, gm_name: str, dt: str | float,
+        NPTS: int | float, duration: float | str,
+        fv_duration: float | str, SF: float | str, num: int=None):
+        """采用正则表达式修改脚本文件(仅当采用tcl脚本时需要修改)
+
+        Args:
+            Output_dir (Path): 输出文件夹路径
+            gm_name (str): 地震动名
+            dt (str | float): 步长
+            NPTS (int | float): 步数
+            duration (float | str): 持时
+            fv_duration (float | str): 自由振动时长
+            SF (float | str): 缩放系数
+            num (int, optional): 当前地震动的序号
+        """
+
+        with open(dir_model / f'{model_name}.tcl', 'r') as f:
+            text = f.read()
+        pattern = re.compile(r'(set maxRunTime )[0-9.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(float(maxRunTime)) + r'\g<2>', text) 
+        pattern1 = re.compile(r'(set EQ )[01](;  # \$\$\$)')
+        pattern2 = re.compile(r'(set PO )[01](;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern1, text)
+        WorkerThread.find_pattern(pattern2, text)
+        if running_case in ['th', 'IDA']:
+            text = pattern1.sub(r'\g<1>' + '1' + r'\g<2>', text)
+            text = pattern2.sub(r'\g<1>' + '0' + r'\g<2>', text)
+        elif running_case == 'pushover':
+            text = pattern1.sub(r'\g<1>' + '0' + r'\g<2>', text)
+            text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
+        # else:
+        #     self.main.logger.warning('无法进行正则匹配\n(set  EQ )')
+        pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + Output_dir.absolute().as_posix() + r'\g<2>', text)
+        pattern = re.compile(r'(set GMname ").+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + gm_name + r'\g<2>', text)
+        pattern = re.compile(r'(set SubFolder ").+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        if num:
+            text = pattern.sub(r'\g<1>' + f'{gm_name}_{num}' + r'\g<2>', text)
+        else:
+            text = pattern.sub(r'\g<1>' + gm_name + r'\g<2>', text)
+        pattern = re.compile(r'(set GMdt )[0-9.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(dt) + r'\g<2>', text)
+        pattern = re.compile(r'(set GMpoints )\d+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(NPTS) + r'\g<2>', text)
+        pattern = re.compile(r'(set GMduration )[0-9.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(duration) + r'\g<2>', text)
+        pattern = re.compile(r'(set FVduration )[0-9.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(fv_duration) + r'\g<2>', text)
+        pattern = re.compile(r'(set EqSF )[0-9.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(SF) + r'\g<2>', text)
+        pattern = re.compile(r'(set GMFile ").+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + dir_gm.as_posix() + f'/$GMname{suffix}' + r'\g<2>', text)
+        pattern = re.compile(r'(set subroutines ").+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + dir_subroutines.as_posix() + r'\g<2>', text)
+        pattern = re.compile(r'(set temp ").+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + dir_temp.as_posix() + r'\g<2>', text)
+        pattern = re.compile(r'set ShowAnimation [01];  # \$\$\$')
+        WorkerThread.find_pattern(pattern, text)
+        if not display:
+            text = pattern.sub(r'set ShowAnimation 0;  # $$$', text)
+        else:
+            text = pattern.sub(r'set ShowAnimation 1;  # $$$', text)
+        pattern = re.compile(r'set MPCO [01];  # \$\$\$')
+        WorkerThread.find_pattern(pattern, text)
+        if mpco:
+            text = pattern.sub(r'set MPCO 1;  # $$$', text)
+        else:
+            text = pattern.sub(r'set MPCO 0;  # $$$', text)
+        pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(maxRoofDrift) + r'\g<2>', text)
+        with open(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl', 'w') as f:
+            f.write(text)
+
+
     @staticmethod
     def find_pattern(pattern: re.Pattern, text: str):
         """
@@ -335,9 +442,40 @@ class WorkerThread(QThread):
         elif self.mainWin.running_case == 'IDA' and not self.main.parallel:
             self.run_IDA()
         elif self.mainWin.running_case == 'IDA' and self.main.parallel:
-            self.run_IDA_parallel(self.main.parallel)
+            if self.main.script == 'py':
+                self.run_IDA_parallel_py(self.main.parallel)
+            else:
+                self.run_IDA_parallel_tcl(self.main.parallel)
         elif self.mainWin.running_case == 'pushover':
             self.run_pushover()
+
+
+    def get_queue(self, queue: multiprocessing.Queue):
+        """进程通讯"""
+        finished_GM = 0  # 已计算完成的地震动
+        while True:
+            if not queue.empty():
+                message = queue.get()
+                flag, text = message
+                if flag == 'a':  # 地震动开始
+                    self.signal_add_log.emit(text)
+                elif flag == 'b':  # 地震动完成
+                    self.signal_add_log.emit(text)
+                    finished_GM += 1
+                elif flag == 'c' or flag == 'd':  # 该次计算开始/完成
+                    self.signal_add_log.emit(text)
+                elif flag == 'e':  # 首次计算即倒塌
+                    self.signal_add_warning.emit(text)
+                    finished_GM += 1
+                elif flag == 'f':  # 超过最大计算次数仍未找到倒塌点
+                    self.signal_add_warning.emit(text)
+                elif flag == 'g':  # 不收敛
+                    self.signal_add_warning.emit(text)
+                elif flag == 'h':  # 超过最大计算时间
+                    self.signal_add_warning.emit(text)
+                self.signal_set_progressBar.emit((f'已完成地震动数量：{finished_GM}', int(finished_GM / self.main.GM_N * 100)))
+                if finished_GM == self.main.GM_N:
+                    break
 
 
     def run_th(self):
@@ -364,7 +502,7 @@ class WorkerThread(QThread):
             self.signal_add_log.emit(f'自由振动时间：{fv_duration}s\n')
             self.signal_add_log.emit(f'缩放系数：{SF:.3f}\n')
             if self.main.script == 'tcl':
-                self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
+                self.modify_script1(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
                 cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
                 # 运行分析
                 if self.mainWin.print_result:
@@ -412,9 +550,10 @@ class WorkerThread(QThread):
                 else:
                     collapsed = 0  # 分析完成，未倒塌
                 if result[0] == 2:
-                    self.signal_add_warning(f'{gm_name}分析不收敛')
+                    s = '倒塌' if collapsed else '未倒塌'
+                    self.signal_add_warning.emit(f'{gm_name}分析不收敛({s})')
                 elif result[0] == 3:
-                    self.signal_add_warning(f'{gm_name}超过最大分析时间')
+                    self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
             Sa = None
             if self.main.method == 'd':
                 Sa = self.main.th_para  # 指定PGA
@@ -486,7 +625,7 @@ class WorkerThread(QThread):
                     text_Sa = 'Sa,avg'
                 self.signal_add_log.emit(f'{text_Sa}：{Sa_current}g\n')
                 if self.main.script == 'tcl':
-                    self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
+                    self.modify_script1(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
                     cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
                     if self.mainWin.test:
                         time.sleep(1)  # 模拟耗时工作
@@ -526,18 +665,21 @@ class WorkerThread(QThread):
                     EqSF = SF
                     GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
                     maxRoofDrift = 0.1
+                    print_result = self.mainWin.print_result
                     paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, print_result]
                     self.signal_send_openseespy_paras.emit(paras)
-                    result = run_openseespy(*paras)
+                    with HiddenPrints(not print_result):
+                        result = run_openseespy(*paras)
                     if result[2]:
                         collapsed = 1  # 分析完成，倒塌
                     else:
                         collapsed = 0  # 分析完成，未倒塌
                     if result[0] == 2:
-                        self.signal_add_warning(f'{gm_name}分析不收敛')
+                        s = '倒塌' if collapsed else '未倒塌'
+                        self.signal_add_warning.emit(f'{gm_name}分析不收敛({s})')
                     elif result[0] == 3:
-                        self.signal_add_warning(f'{gm_name}超过最大分析时间')
+                        self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
                 if not os.path.exists(self.main.Output_dir / f'{gm_name}_{run_num+1}'):
                     os.makedirs(self.main.Output_dir / f'{gm_name}_{run_num+1}')
                 np.savetxt(self.main.Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
@@ -591,8 +733,11 @@ class WorkerThread(QThread):
             self.signal_finished.emit(1)
 
 
-    def run_IDA_parallel(self, processes: int):
-        ls_paras = []
+    def run_IDA_parallel_py(self, processes: int):
+        self.main.logger.info(f'正在进行多进程IDA计算')
+        self.signal_set_ui.emit(('', '', '', '', ''))
+        queue = multiprocessing.Manager().Queue()  # 子进程向主进程通信
+        ls_paras: list[tuple] = []
         Sa0, Sa_incr, tol, max_ana = self.mainWin.Sa0, self.mainWin.Sa_incr, self.mainWin.tol, self.mainWin.max_ana
         module = import_module(f'models.{self.main.model_name}')
         run_openseespy = getattr(module, 'run_openseespy')
@@ -606,35 +751,73 @@ class WorkerThread(QThread):
         T = self.main.T
         intensity_measure = self.mainWin.intensity_measure
         trace_collapse = self.main.trace_collapse
+        print_result = self.mainWin.print_result
         for idx in range(self.main.GM_N):
             gm_name: str = self.main.GM_names[idx]
-            self.mainWin.current_gm = gm_name
             dt: float = self.main.GM_dts[idx]
             NPTS: int = self.main.GM_NPTS[idx]
             duration: float = self.main.GM_durations[idx]
             fv_duration: float = self.main.fv_duration
-            T: np.ndarray = self.main.T
             RSA = self.mainWin.RSA[idx]
-            Sa_current = Sa0
-            if self.mainWin.intensity_measure == 1:
-                Sa_original = self.Sa(T, RSA, self.mainWin.T0)  # 以Sa(T)作为地震动强度指标
-            elif self.mainWin.intensity_measure == 2:
-                Ta, Tb = self.mainWin.T_range
-                Sa_range = RSA[(Ta <= T) & (T <= Tb)]
-                Sa_avg = self.geometric_mean(Sa_range)  # 简单几何平均数
-                Sa_original = Sa_avg  
-            self.signal_set_progressBar.emit((f'正在计算地震动：{idx+1}/{self.main.GM_N}', int(idx / self.main.GM_N * 100)))
-            iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
-            Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
-            paras = (run_openseespy, gm_name, dt, NPTS, duration, fv_duration, maxRunTime,
+            paras = (queue, self.stop_event, run_openseespy, gm_name, dt, NPTS, duration, fv_duration, maxRunTime,
                      Output_dir, MainFolder, dir_gm, suffix, T0, T_range, T, RSA,
-                     intensity_measure, Sa0, Sa_incr, tol, max_ana, trace_collapse)
+                     intensity_measure, Sa0, Sa_incr, tol, max_ana, trace_collapse, print_result)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
-            results = pool.starmap(run_single_IDA, ls_paras)
-        print(results)
+            results = []
+            for i in range(self.main.GM_N):
+                result = pool.apply_async(run_single_IDA_py, ls_paras[i])  # 设置进程池
+                results.append(result)
+            self.get_queue(queue)
+            for result in results:
+                output = result.get()
+            pool.close()
+            pool.join()
         self.signal_finished.emit(1)
     
+
+    def run_IDA_parallel_tcl(self, processes: int):
+        self.main.logger.info(f'正在进行多进程IDA计算')
+        self.signal_set_ui.emit(('', '', '', '', ''))
+        queue = multiprocessing.Manager().Queue()  # 子进程向主进程通信
+        ls_paras: list[tuple] = []
+        Sa0, Sa_incr, tol, max_ana = self.mainWin.Sa0, self.mainWin.Sa_incr, self.mainWin.tol, self.mainWin.max_ana
+        dir_model = self.main.dir_model
+        dir_gm = self.main.dir_gm
+        dir_subroutines = self.main.dir_subroutines
+        dir_temp = self.main.dir_temp
+        model_name = self.main.model_name
+        mpco = self.main.mpco
+        OS_path = self.main.OS_path
+        print_result = self.mainWin.print_result
+        maxRunTime = self.main.maxRunTime
+        Output_dir = self.main.Output_dir
+        dir_gm = self.main.dir_gm
+        suffix = self.main.suffix
+        T0 = self.mainWin.T0
+        T_range = self.mainWin.T_range
+        T = self.main.T
+        intensity_measure = self.mainWin.intensity_measure
+        trace_collapse = self.main.trace_collapse
+        for idx in range(self.main.GM_N):
+            gm_name: str = self.main.GM_names[idx]
+            dt: float = self.main.GM_dts[idx]
+            NPTS: int = self.main.GM_NPTS[idx]
+            duration: float = self.main.GM_durations[idx]
+            fv_duration: float = self.main.fv_duration
+            RSA = self.mainWin.RSA[idx]
+            paras = (queue, self.stop_event, dir_model, dir_gm, dir_subroutines, dir_temp,
+                     model_name, gm_name, mpco, dt, NPTS, duration, fv_duration, maxRunTime,
+                     Output_dir, suffix, T0, T_range, T, RSA, intensity_measure,
+                     Sa0, Sa_incr, tol, max_ana, trace_collapse, OS_path, print_result)
+            ls_paras.append(paras)
+        with multiprocessing.Pool(processes) as pool:
+            for i in range(self.main.GM_N):
+                pool.apply_async(run_single_IDA_tcl, ls_paras[i])  # 设置进程池
+            self.get_queue(queue)
+            pool.close()
+            pool.join()
+        self.signal_finished.emit(1)
 
 
     def run_pushover(self):
@@ -650,7 +833,7 @@ class WorkerThread(QThread):
         time_gm_start = time.time()
         self.signal_add_log.emit(f'开始：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_start))}\n')
         if self.main.script == 'tcl':
-            self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
+            self.modify_script1(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
             cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
             # 运行分析
             if self.mainWin.print_result:
@@ -685,9 +868,9 @@ class WorkerThread(QThread):
             self.signal_send_openseespy_paras.emit(paras)
             result = run_openseespy(*paras)
             if result[0] == 2:
-                self.signal_add_warning(f'{gm_name}分析不收敛')
+                self.signal_add_warning.emit(f'{gm_name}分析不收敛')
             elif result[0] == 3:
-                self.signal_add_warning(f'{gm_name}超过最大分析时间')
+                self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
         if not os.path.exists(self.main.Output_dir / gm_name):
             os.makedirs(self.main.Output_dir / gm_name)
         with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
@@ -743,7 +926,9 @@ def geometric_mean(data):  # 计算几何平均数
     return pow(total, 1 / len(data))
     
 
-def run_single_IDA(
+def run_single_IDA_py(
+    queue: multiprocessing.Queue,
+    stop_event,
     run_openseespy: Callable,
     gm_name: str,
     dt: float,
@@ -764,11 +949,28 @@ def run_single_IDA(
     Sa_incr: float,
     tol: float,
     max_ana: int,
-    trace_collapse: bool
+    trace_collapse: bool,
+    print_result: bool
 ):
-    """计算单条地震动的IDA分析，
-    该函数仅用于多进程，无法详细地更新ui监控信息"""
-    # 计算单条地震动的IDA分析(该函数仅用于多进程)
+    """
+    计算单条地震动的IDA分析(基于openseespy)，
+    该函数仅用于多进程，无法详细地更新ui监控信息。
+    队列格式：(信息类型，信息值)
+    信息类型：
+    * a-该条地震动IDA开始  
+    * b-该条地震动IDA结束
+    * c-第xx次计算开始
+    * d-第xx次计算结束
+    * e-首次计算即倒塌
+    * f-超过最大计算次数仍未找到倒塌点
+    * g-不收敛
+    * h-超过最大计算时间
+    """
+
+    now = lambda: datetime.datetime.now().strftime('%H:%M')
+    message = ('a', f'{gm_name}开始({now()})\n')
+    if not stop_event.is_set():
+        queue.put(message)
     Sa_current = Sa0
     if intensity_measure == 1:
         Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
@@ -780,28 +982,15 @@ def run_single_IDA(
     iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
     Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
     for run_num in range(max_ana):
-        # self.main.logger.info(f'\t第{idx+1}条地震动第{run_num+1}次计算')
+        if stop_event.is_set():
+            message = ('b', f'{gm_name}退出计算\n')
+            queue.put(message)
+            return
         Sa_current = round(Sa_current, 5)
         SF = Sa_current / Sa_original
+        message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
+        queue.put(message)
         time_gm_start = time.time()
-        # if self.main.script == 'tcl':
-        #     self.modify_script(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num+1)
-        #     cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
-        #     if self.mainWin.test:
-        #         time.sleep(1)  # 模拟耗时工作
-        #     else:
-        #         # 运行分析
-        #         if self.mainWin.print_result:
-        #             subprocess.call(cmd)
-        #         else:
-        #             subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        #     if os.path.exists(self.main.dir_temp/ f'{gm_name}_CollapseState.txt'):
-        #         collapsed = 1
-        #         self.signal_add_log.emit(f'倒塌：是\n')
-        #         os.remove(self.main.dir_temp / f'{gm_name}_CollapseState.txt')
-        #     else:
-        #         collapsed = 0
-        #         self.signal_add_log.emit(f'倒塌：否\n')
         # maxRunTime
         EQorPO = 'EQ'
         ShowAnimation = False
@@ -817,18 +1006,20 @@ def run_single_IDA(
         GMFile = dir_gm / f'{gm_name}{suffix}'
         maxRoofDrift = 0.1
         paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
-        result = run_openseespy(*paras)
+                GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, print_result]
+        with HiddenPrints(not print_result):
+            result = run_openseespy(*paras)  # 运行分析
         if result[2]:
             collapsed = 1  # 分析完成，倒塌
         else:
             collapsed = 0  # 分析完成，未倒塌
         if result[0] == 2:
-            # self.signal_add_warning(f'{gm_name}分析不收敛')
-            pass  # TODO 发送信号
+            s = '倒塌'if collapsed else '未倒塌'
+            message = ('g', f'{gm_name}第{run_num+1}次计算不收敛({s})\n')
+            queue.put(message)
         elif result[0] == 3:
-            # self.signal_add_warning(f'{gm_name}超过最大分析时间')
-            pass  # TODO 发送信号
+            message = ('h', f'{gm_name}第{run_num+1}次计算超过最大计算时间\n')
+            queue.put(message)
         if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
             os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
         np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
@@ -836,14 +1027,13 @@ def run_single_IDA(
             f.write(str(collapsed))
         time_gm_end = time.time()
         time_cost = time_gm_end - time_gm_start
-        # self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
-        # self.signal_add_log.emit(f'该地震动已计算次数：{run_num+1}\n')
-        # self.signal_add_log.emit(f'该地震动计算耗时：{round(time_cost, 2)}s\n\n')
         if trace_collapse:
             # 追踪倒塌
             if run_num == 0 and collapsed == 1:
                 # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                return  # TODO
+                message = ('e', f'{gm_name}首次计算即倒塌\n')
+                queue.put(message)
+                return
             if collapsed == 0 and iter_state == 0:
                 # 如果未倒塌，且不处于迭代状态
                 Sa_l = Sa_current
@@ -860,15 +1050,188 @@ def run_single_IDA(
                 if Sa_l > Sa_r:
                     raise ValueError('最小倒塌强度大于最大未倒塌强度!')
                 if Sa_r - Sa_l < tol:
-                    return  # 满足收敛容差，完成当前地震动分析 # TODO
+                    message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+                    queue.put(message)
+                    message = ('b', f'{gm_name}完成({now()})\n')
+                    queue.put(message)
+                    return
                 Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
         else:
             # 不追踪倒塌
             Sa_current += Sa_incr
+        s = '倒塌'if collapsed else '未倒塌'
+        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+        queue.put(message)
     else:
         # 超过最大计算次数
         if trace_collapse:
-            # self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
-            pass  # TODO 发送信号
-    # self.main.logger.success(f'第{idx+1}条地震动计算完成')  # TODO 发送信号
-        return  # TODO
+            message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+            queue.put(message)
+        message = ('b', f'{gm_name}完成({now()})\n')
+        queue.put(message)
+        return
+
+
+def run_single_IDA_tcl(
+    queue: multiprocessing.Queue,
+    stop_event,
+    dir_model: Path,
+    dir_gm: Path,
+    dir_subroutines: Path,
+    dir_temp: Path,
+    model_name: str,
+    gm_name: str,
+    mpco: bool,
+    dt: float,
+    NPTS: int,
+    duration: float,
+    fv_duration: float,
+    maxRunTime: float,
+    Output_dir: Path,
+    suffix: str,
+    T0: float,
+    T_range: tuple[float, float],
+    T: np.ndarray,
+    RSA: np.ndarray,
+    intensity_measure: Literal[1, 2],
+    Sa0: float,
+    Sa_incr: float,
+    tol: float,
+    max_ana: int,
+    trace_collapse: bool,
+    OS_path: str,
+    print_result: bool
+):
+    """
+    计算单条地震动的IDA分析(基于tcl)，
+    该函数仅用于多进程，无法详细地更新ui监控信息。
+    队列格式：(信息类型，信息值)
+    信息类型：
+    * a-该条地震动IDA开始  
+    * b-该条地震动IDA结束
+    * c-第xx次计算开始
+    * d-第xx次计算结束
+    * e-首次计算即倒塌
+    * f-超过最大计算次数仍未找到倒塌点
+    * g-不收敛
+    * h-超过最大计算时间
+    """
+
+    now = lambda: datetime.datetime.now().strftime('%H:%M')
+    message = ('a', f'{gm_name}开始({now()})\n')
+    if not stop_event.is_set():
+        queue.put(message)
+    Sa_current = Sa0
+    if intensity_measure == 1:
+        Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
+    elif intensity_measure == 2:
+        Ta, Tb = T_range
+        Sa_range = RSA[(Ta <= T) & (T <= Tb)]
+        Sa_avg = geometric_mean(Sa_range)  # 简单几何平均数
+        Sa_original = Sa_avg  
+    iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
+    Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
+    for run_num in range(max_ana):
+        if stop_event.is_set():
+            message = ('b', f'{gm_name}退出计算\n')
+            queue.put(message)
+            return
+        Sa_current = round(Sa_current, 5)
+        SF = Sa_current / Sa_original
+        message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
+        queue.put(message)
+        time_gm_start = time.time()
+        maxRoofDrift = 0.1
+        display = False
+        running_case = 'IDA'
+        WorkerThread.modify_script(
+            dir_model, model_name, maxRunTime, running_case,
+            dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
+            Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num + 1
+        )
+        cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
+        if print_result:
+            subprocess.call(cmd)
+        else:
+            subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(dir_temp/ f'{gm_name}_CollapseState.txt'):
+            collapsed = 1
+            os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
+        else:
+            collapsed = 0
+        queue.put(message)
+        if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
+            os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
+            print(Output_dir / f'{gm_name}_{run_num+1}')
+        np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
+        with open(Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
+            f.write(str(collapsed))
+        time_gm_end = time.time()
+        time_cost = time_gm_end - time_gm_start
+        if trace_collapse:
+            # 追踪倒塌
+            if run_num == 0 and collapsed == 1:
+                # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
+                message = ('e', f'{gm_name}首次计算即倒塌\n')
+                queue.put(message)
+                return
+            if collapsed == 0 and iter_state == 0:
+                # 如果未倒塌，且不处于迭代状态
+                Sa_l = Sa_current
+                Sa_current += Sa_incr
+            else:
+                # 在迭代状态下，即已经出现过倒塌后
+                iter_state = 1  # 进入迭代状态
+                if collapsed == 1:
+                    # 若迭代状态下倒塌，更新最小倒塌强度
+                    Sa_r = min(Sa_current, Sa_r)
+                else:
+                    # 若迭代状态下未倒塌，更新最大未倒塌强度
+                    Sa_l = max(Sa_current, Sa_l)
+                if Sa_l > Sa_r:
+                    raise ValueError('最小倒塌强度大于最大未倒塌强度!')
+                if Sa_r - Sa_l < tol:
+                    message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+                    queue.put(message)
+                    message = ('b', f'{gm_name}完成({now()})\n')
+                    queue.put(message)
+                    return
+                Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
+        else:
+            # 不追踪倒塌
+            Sa_current += Sa_incr
+        s = '倒塌'if collapsed else '未倒塌'
+        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+        queue.put(message)
+    else:
+        # 超过最大计算次数
+        if trace_collapse:
+            message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+            queue.put(message)
+            pass
+        message = ('b', f'{gm_name}完成({now()})\n')
+        queue.put(message)
+        return
+
+
+class HiddenPrints:
+    """屏蔽输出"""
+
+    def __init__(self, suppress=True):
+        self.suppress = suppress
+        self._original_stdout = None
+        self._original_stderr = None
+
+    def __enter__(self):
+        if self.suppress:
+            self._original_stdout = sys.stdout
+            self._original_stderr = sys.stderr
+            sys.stdout = open(os.devnull, 'w')
+            sys.stderr = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.suppress:
+            sys.stdout.close()
+            sys.stderr.close()
+            sys.stdout = self._original_stdout
+            sys.stderr = self._original_stderr

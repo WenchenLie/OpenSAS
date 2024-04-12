@@ -452,7 +452,7 @@ wipe all;
 #
 # Moment resisting frame model information
 # Frame name: MRF_4S_AE
-# Generation time: 2024-04-10 15:16:17.490834
+# Generation time: 2024-04-11 19:15:01.099002
 # All units are in [N, mm, t]
 # 
 # 

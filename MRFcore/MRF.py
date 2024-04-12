@@ -245,6 +245,7 @@ class MRF:
                 init_SF = 1.0  # 初始缩放系数
                 learning_rate = 0.01  # 学习率
                 num_iterations = 40000  # 迭代次数
+                init_SF = np.mean(Sa_code[idx1: idx2]) / np.mean(RSA[idx1: idx2])
                 SF = self.gradient_descent(RSA[idx1: idx2], Sa_code[idx1: idx2], init_SF, learning_rate, num_iterations)
             elif method == 'd':
                 PGA = para
@@ -510,17 +511,23 @@ class MRF:
             * 2: Sa,avg, 给定周期范围内的简单几何平方根  \n
             T_range (tuple, optional): 周期范围，默认None，当`intensity_measure`为2时生效  
             print_result (bool, optional): 是否打印opensees终端输出的结果，默认不打印  
-            trace_collapse (bool): 是否追踪倒塌（若否则不动态调整地震动强度指标）  
-            parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，位其他数时代表最大进程数
+            trace_collapse (bool, optional): 是否追踪倒塌，默认True（若False则不动态调整地震动强度以搜寻倒塌点）  
+            parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，为其他数时则代表最大进程数
         """
         if self.do_not_run:
             return
-        if self.script == 'tcl' and parallel:
-            self.logger.warning('多进程目前仅支持使用openseespy脚本，将退出分析')
-            return
+        # if self.script == 'tcl' and parallel:
+        #     self.logger.warning('多进程目前仅支持使用openseespy脚本，将退出分析')
+        #     return
         self.logger.info('开始进行IDA')
         self.trace_collapse = trace_collapse
+        if not isinstance(parallel, int) or parallel < 0:
+            self.logger.error('参数parallel格式错误，必须为大于等于0的整数')
+            raise ValueError('parallel格式错误')
         self.parallel = parallel
+        if self.display and parallel > 0:
+            self.logger.warning('采用多进程并行计算时，暂不支持显示实时动画')
+            self.display = False
         # 计算无缩放反应谱
         T = np.arange(0, 6.02, 0.01)
         self.T = T

@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------------
 
 import os
+import sys
 import numpy as np
 from pathlib import Path
 import openseespy.opensees as ops
@@ -33,8 +34,10 @@ def run_openseespy(
     FVduration: float,
     EqSF: float,
     GMFile: Path,
-    maxRoofDrift: float
+    maxRoofDrift: float,
+    print_result: bool
     ):
+
 
     ops.wipe()
     ops.model("basic", "-ndm", 2, "-ndf", 3)
@@ -788,7 +791,7 @@ def run_openseespy(
 #
 # Moment resisting frame model information
 # Frame name: MRF_4S_AE
-# Generation time: 2024-04-10 23:37:34.532016
+# Generation time: 2024-04-11 19:15:01.099002
 # All units are in [N, mm, t]
 # 
 # 

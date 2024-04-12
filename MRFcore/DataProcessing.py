@@ -248,6 +248,8 @@ class DataProcessing:
                     # 遍历楼层
                     data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]
                     data_max= max(abs(data))
+                    if gm_name == 'th2':
+                        print(data_max)  # TODO
                     data_res = data[-1]
                     IDR[story] = data_max
                     IDR_res[story] = data_res
@@ -852,14 +854,14 @@ class DataProcessing:
 if __name__ == "__main__":
     
     time0 = time.time()
-    model = DataProcessing(r'H:/MRF_results/test/4SMRF_AS', gm_suffix='.th')
-    model.set_output_dir(r'H:/MRF_results/test/4SMRF_AS_out', cover=1)
+    model = DataProcessing(r'H:/MRF_results/test/4SMRF_AE_parralle_py', gm_suffix='.th')
+    model.set_output_dir(r'H:/MRF_results/test/4SMRF_AE_parralle_py_out_test', cover=1)
     model.read_results('mode', 'IDR')
-    model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
+    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     # l1 = pow(6100**2 + 4300**2, 0.5)  # 首层斜撑长度
     # l2 = pow(6100**2 + 4000**2, 0.5)  # 其他层斜撑长度
     # model.read_pushover(H=16300, plot_result=True)
-    model.read_th()  # 只有时程分析工况需要用
+    # model.read_th()  # 只有时程分析工况需要用
     time1 = time.time()
     print('耗时', time1 - time0)
 

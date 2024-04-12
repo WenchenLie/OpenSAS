@@ -22,6 +22,7 @@ def TimeHistorySolver(
         GMname (str): Ground motion name
         maxRunTime (float): Maximum run time (second)
         ShowAnimation (bool): Whether to display the building deformation
+        print_result (bool): Whether to print analysis information
         min_factor (float): Factor to control the adaptive time step
         max_factor (float): Factor to control the adaptive time step
     
@@ -43,11 +44,6 @@ def TimeHistorySolver(
     ops.integrator("Newmark", 0.5, 0.25)
     ops.analysis("Transient")
 
-    # if ShowAnimation:
-    #     model_data_init = DisplayModel2D.get_model_data()
-    #     plt.ion()  # 开启交互模式
-    #     fig, ax = plt.subplots()
-
     collapse_flag = False
     print_collapse = True
     factor = 1
@@ -56,19 +52,26 @@ def TimeHistorySolver(
     dt = dt_init
     SDRs = np.zeros((10, len(story_heights)))
     SDR_roof = [0] * 10
+    collapseTime = 60
+    collapseStart = 0
     while True:
         if time.time() - start_time > maxRunTime:
             print("Exceeding maximum running time")
-            # if ShowAnimation:
-            #     plt.ioff()
             return 3, ops.getTime(), collapse_flag, SDRs, SDR_roof
+        if collapse_flag and time.time() - collapseStart > collapseTime:
+            return 2, ops.getTime(), collapse_flag, SDRs, SDR_roof
         ok = ops.analyze(1, dt)
         if ok == 0:
-            # if ShowAnimation:
-            #     DisplayModel2D.DisplayModel2D(model_data_init, ax)
             collapse_flag, maxAna_flag, SDRs_i, SDR_roof_i = SDR_tester(
                 story_heights, ctrl_nodes, CollapseDrift, MaxAnalysisDrift, GMname)
-            SDRs = np.vstack((SDRs, SDRs_i))
+            if collapse_flag and collapseStart == 0:
+                collapseStart = time.time()
+            try:
+                SDRs = np.vstack((SDRs, SDRs_i))
+            except:
+                print(SDRs)
+                print(SDRs_i)
+                raise ValueError()
             SDR_roof.append(SDR_roof_i)
             if ops.getTime() >= duration:
                 print("Analysis finished")
@@ -87,9 +90,12 @@ def TimeHistorySolver(
             factor *= 2
             factor = min(factor, max_factor)
             if factor_old < factor:
-                print(f"---- Enlarged factor: {factor}")
+                print(f"---- Enlarged factor: {factor}, Time: {ops.getTime()}")
             algorithm_id -= 1
             algorithm_id = max(0, algorithm_id)
+            # algorithm_id += 1
+            # algorithm_id == 4
+            # algorithm_id = 0
         else:
             factor *= 0.5
             if factor < min_factor:
@@ -97,11 +103,9 @@ def TimeHistorySolver(
                 algorithm_id += 1
                 if algorithm_id == 4:
                     print("Cannot converge")
-                    # if ShowAnimation:
-                    #     plt.ioff()
                     return 2, ops.getTime(), collapse_flag, SDRs, SDR_roof
-                print(f"-------- Switched algorithm:", *algorithms[algorithm_id])
-            print(f"---- Reduced factor: {factor}")
+                print(f"-------- Switched algorithm:", *algorithms[algorithm_id], f'Time: {ops.getTime()}')
+            print(f"---- Reduced factor: {factor}, Time: {ops.getTime()}")
         dt = dt_init * factor
         if dt + ops.getTime() > duration:
             dt = duration - ops.getTime()
@@ -121,6 +125,8 @@ def SDR_tester(story_heights: list, ctrl_nodes: list,
         raise ValueError('`MaxAnalysisDrift` should be larger than `CollapseDrift`')
 
     SDRs = []
+    SDR_roof = ops.nodeDisp(ctrl_nodes[len(story_heights) - 1])[0] / sum(story_heights)
+    collapse = (False, False)
     for i, h in enumerate(story_heights):
         if i == 0:
             disp_b = 0
@@ -128,17 +134,13 @@ def SDR_tester(story_heights: list, ctrl_nodes: list,
         else:
             disp_b = ops.nodeDisp(ctrl_nodes[i - 1])[0]
             disp_t = ops.nodeDisp(ctrl_nodes[i])[0]
-        if i == len(story_heights) - 1:
-            SDR_roof = disp_t / sum(story_heights)
         SDR = (disp_t - disp_b) / h
         SDRs.append(SDR)
         if SDR >= MaxAnalysisDrift:
-            return True, True, SDRs, SDR_roof
+            collapse = (True, True)
         if SDR >= CollapseDrift:
-            with open(f"{GMname}_CollapseState.txt", "w") as f:
-                f.write("1")
-            return True, False, SDRs, SDR_roof
-    return False, False, SDRs, SDR_roof
+            collapse = (True, False)
+    return *(collapse), SDRs, SDR_roof
 
 
 

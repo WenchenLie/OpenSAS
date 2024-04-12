@@ -1,5 +1,4 @@
 import numpy as np
-import os
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -8,6 +7,8 @@ import openpyxl as px
 from pathlib import Path
 from loguru import logger
 from wsection import WSection
+if __name__ == "__main__":
+    sys.path.append(str(Path(__file__).parent.parent))
 import func
 
 """
@@ -661,17 +662,17 @@ class FragilityAnalysis():
 if __name__ == "__main__":
 
     # 层间位移角
-    Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4SMRF_AE_noSPD_out', EDP_type=1)
+    Model_4StoryMRF = FragilityAnalysis(r'H:/MRF_results/test/4SMRF_AE_parralle_tcl_out', EDP_type=1)
     Model_4StoryMRF.calc_IDA(DM_limit=0.1)
     Model_4StoryMRF.frag_curve(
         Damage_State=[0.005, 0.01, 0.02, 0.04],
         label=['DS-1', 'DS-2', 'DS-3', 'DS-4']
     )
     Model_4StoryMRF.frag_collapse(IM_MCE=[0.5631186282943467*1.5])
-    Model_4StoryMRF.exceedance_probability(EDP_val=0.15)
+    Model_4StoryMRF.exceedance_probability(EDP_val=0.1)
     Model_4StoryMRF.PlotCurves()
     Model_4StoryMRF.Print_data()
-    Model_4StoryMRF.Save_data(r'H:\MRF_results\4SMRF_AE_noSPD_out_frag')
+    Model_4StoryMRF.Save_data(r'H:/MRF_results/test/4SMRF_AE_parralle_tcl_out_frag')
 
     # 层加速度
     # Model_4StoryMRF = FragilityAnalysis(r'H:\MRF_results\4StoryMRF_out', EDP_type=3)

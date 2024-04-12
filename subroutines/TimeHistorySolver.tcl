@@ -30,7 +30,7 @@ proc TimeHistorySolver {
     constraints Plain;
     numberer RCM;
     system UmfPack;
-    test EnergyIncr 1.0e-5 100;
+    test EnergyIncr 1.0e-3 100;
     algorithm KrylovNewton;
     integrator Newmark 0.5 0.25;
     analysis Transient;
@@ -40,13 +40,17 @@ proc TimeHistorySolver {
     set factor 1.0;
     set start_time [clock seconds];
     set nstep 0;
-
-    set dt $dt_init
+    set dt $dt_init;
+    set collapseTime 60.0;
+    set collapseStart 0;
     while {1} {
         # puts [eleResponse 10020109 deformation]
         if {[expr [clock seconds] - $start_time] >= $maxRunTime} {
             puts "Exceeding maximum running time";
             return [list 4 [getTime]];
+        }
+        if {$collapse_flag == 1 && [expr [clock seconds] - $collapseStart] > $collapseTime} {
+            return [list 2 [getTime]]
         }
         set ok [analyze 1 $dt];
         if {$ok == 0} {
@@ -58,6 +62,7 @@ proc TimeHistorySolver {
             set test_result [SDR_tester $story_heights $ctrl_nodes $CollapseDrift $MaxAnalysisDrift $GMname $temp]
             set collapse_flag [lindex $test_result 0]
             set maxAna_flag [lindex $test_result 1]
+            if {$collapse_flag == 1 && $collapseStart == 0} {set collapseStart [clock seconds]}
             if {$maxAna_flag} {
                 puts "Analysis finished, the structure collapsed"
                 return [list 2 [getTime]]
@@ -69,7 +74,7 @@ proc TimeHistorySolver {
             set factor_old $factor
             set factor [expr {min($factor * 2, $max_factor)}]
             if {$factor_old < $factor} {
-                puts "-- [getTime] -- Enlarged factor: $factor"
+                puts "---- Enlarged factor: $factor, Time: [getTime]"
             }
             incr Id_algorithm -1
             set Id_algorithm [expr {max(0, $Id_algorithm)}]
@@ -83,9 +88,9 @@ proc TimeHistorySolver {
                     puts "Cannot converge"
                     return [list 3 [getTime]]
                 }
-                puts "-- [getTime] ------ Switched algorithm: [lindex $ls_algorithms $Id_algorithm]"
+                puts "-------- Switched algorithm: [lindex $ls_algorithms $Id_algorithm], Time: [getTime]"
             }
-            puts "-- [getTime] -- Reduced factor: $factor"
+            puts "---- Reduced factor: $factor, Time: [getTime]"
         }
         set dt [expr $factor * $dt_init]
         if {[expr $dt + [getTime]] > $duration} {
