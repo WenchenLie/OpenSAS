@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 作者：列文琛
 更新：2024.03.10
 更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
+更新：2024-04-12，增加多进程并行计算
 """
 
 logger.remove()
@@ -84,6 +85,7 @@ class MRF:
         self.Output_dir = self.cwd
         self.do_not_run = False  # 运行分析
         self.maxRoofDrift = 0.1  # Pushover分析的目标层间位移角
+        self.parallel = 0
         self._init_set_QApp()
         self._check_version()
         self.logger.success(f'已定义模型：{self.model_name}')
@@ -438,10 +440,9 @@ class MRF:
             可执行终端文件都放在OS_terminal文件夹  
             fv_duration (float, optional): 时程分析时的自由振动时长，默认为0，  
             运行pushover时可不传参或随便填一个数  
-            display (bool): 是否显示运行时结构的实时变形图  
-            mpco (bool): 是否创建mpco文件，用于被STKO读取后处理  
+            display (bool): 是否显示运行时结构的实时变形图(IDA计算或采用openseespy时不支持)  
+            mpco (bool): 是否创建mpco文件，用于被STKO读取后处理(采用openseespy时不支持)  
             log_name (str): 日志文件名  
-            maxRunTime (float): 最大允许运行时间(s)，默认600s  
             maxRunTime (float): 最大允许运行时间(s)，默认600s  
             auto_quit (bool): 计算完成时是否自动关闭监控窗口，默认False  
             folder_exists (bool): 如果输出文件夹存在，如何处理。ask-询问，overwrite-覆盖，delete-删除
@@ -516,9 +517,6 @@ class MRF:
         """
         if self.do_not_run:
             return
-        # if self.script == 'tcl' and parallel:
-        #     self.logger.warning('多进程目前仅支持使用openseespy脚本，将退出分析')
-        #     return
         self.logger.info('开始进行IDA')
         self.trace_collapse = trace_collapse
         if not isinstance(parallel, int) or parallel < 0:
@@ -587,12 +585,12 @@ class MRF:
         """计算IDA曲线簇的百分位线
 
         Args:
-            all_x (list[list]): 所有独立IDA的横坐标\n
-            all_y (list[list]): 所有独立IDA的纵坐标\n
-            p (float): 百分位值\n
-            n (int): 输出的百分为线横坐标的点数量\n
-            x0 (float): 百分为线的横坐标起始范围\n
-            x1 (float): 百分为线的横坐标结束范围\n
+            all_x (list[list]): 所有独立IDA的横坐标
+            all_y (list[list]): 所有独立IDA的纵坐标
+            p (float): 百分位值
+            n (int): 输出的百分为线横坐标的点数量
+            x0 (float): 百分为线的横坐标起始范围
+            x1 (float): 百分为线的横坐标结束范围
 
         Returns:
             tuple[np.ndarray, np.ndarray]: 百分位线的横坐标、纵坐标
@@ -614,9 +612,9 @@ class MRF:
         """获得竖线x=x0与给定曲线的交点纵坐标
 
         Args:
-            x (list): 输入曲线的横坐标序列\n
-            y (list): 输入曲线的纵坐标序列\n
-            x0 (float): 竖直线x = x0\n
+            x (list): 输入曲线的横坐标序列
+            y (list): 输入曲线的纵坐标序列
+            x0 (float): 竖直线x = x0
 
         Returns:
             float: 曲线与竖线交点纵坐标

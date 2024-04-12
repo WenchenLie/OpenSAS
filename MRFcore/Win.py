@@ -275,7 +275,7 @@ class WorkerThread(QThread):
             text = pattern1.sub(r'\g<1>' + '0' + r'\g<2>', text)
             text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
         else:
-            self.main.logger.warning('无法进行正则匹配\n(set  EQ )')
+            self.main.logger.warning('无法进行正则匹配 (set  EQ )')
         pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + Output_dir.absolute().as_posix() + r'\g<2>', text)
@@ -366,8 +366,6 @@ class WorkerThread(QThread):
         elif running_case == 'pushover':
             text = pattern1.sub(r'\g<1>' + '0' + r'\g<2>', text)
             text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
-        # else:
-        #     self.main.logger.warning('无法进行正则匹配\n(set  EQ )')
         pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
         WorkerThread.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + Output_dir.absolute().as_posix() + r'\g<2>', text)
@@ -695,8 +693,8 @@ class WorkerThread(QThread):
                 if self.main.trace_collapse:
                     # 追踪倒塌
                     if run_num == 0 and collapsed == 1:
-                        self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                        self.main.logger.warning(f'{gm_name}首次计算即倒塌！\n\n')
+                        self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n')
+                        self.main.logger.warning(f'{gm_name}首次计算即倒塌！')
                         break
                     if collapsed == 0 and iter_state == 0:
                         # 如果未倒塌，且不处于迭代状态
@@ -724,8 +722,8 @@ class WorkerThread(QThread):
                 if self.main.trace_collapse:
                     self.mainWin.warning = 1
                     self.signal_add_warning.emit(time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end)) + '\n')
-                    self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
-                    self.main.logger.warning(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n\n')
+                    self.signal_add_warning.emit(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！\n')
+                    self.main.logger.warning(f'地震动{gm_name}在{max_ana}次分析后未能找到倒塌点！')
             if self.main.script == 'tcl':
                 os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.mainWin.current_gm}.tcl')
             self.main.logger.success(f'第{idx+1}条地震动计算完成')

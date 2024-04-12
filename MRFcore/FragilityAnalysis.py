@@ -486,6 +486,7 @@ class FragilityAnalysis():
         ax: Axes = axes[0, 2]
         ax.plot(np.log(self.IM), np.log(self.DM), 'o')
         ax.plot(np.log(self.IM_fit), np.log(self.DM_fit), 'red', label=f'ln(EDP) = {self.A:.4f} + {self.B:.4f} * ln(IM)')
+        ax.set_title('ln(DM) - ln(IM)')
         ax.set_xlabel('ln(IM)')
         ax.set_ylabel('ln(EDP)')
         ax.legend()
@@ -494,7 +495,7 @@ class FragilityAnalysis():
         for i, y in enumerate(self.y_frag):
             ax.plot(self.x_frag, y, label=self.label[i])
             ax.legend()
-        ax.legend('Fragility curves')
+        ax.set_title('Fragility curves')
         ax.set_xlim(0)
         ax.set_ylim(0, 1)
         ax.set_xlabel('Sa(T1)')

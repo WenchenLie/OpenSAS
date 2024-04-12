@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from loguru import logger
 from pathlib import Path
-# from .. import func
 from math import pi
 import time
 import pandas as pd
@@ -53,8 +52,6 @@ class DataProcessing:
             self.notes = f.read()
         with open(self.root / 'running_case.dat', 'r') as f:
             self.running_case = f.read()
-        if not Path.exists(self.root / 'EigenAnalysis'):
-            raise ValueError(f'【Error】未找到EigenAnalysis文件夹')
         error_dir = []
         error_Sa = []
         for gm_name in self.GM_names:
@@ -181,24 +178,29 @@ class DataProcessing:
         return y_new
 
 
-
-
-
     def _read_mode(self, print_result):
         # 读取模态结果
         logger.info('正在读取模态结果...')
-        T = np.loadtxt(self.root / 'EigenAnalysis/EigenPeriod.out')
-        mode = np.zeros((self.N, self.N))
+        mode = np.zeros((self.N, self.N))  # 每行代表每阶振型
         # self.mode的第i行j列为第i阶振型第j层位移
+        if self.running_case == 'IDA':
+            subFolder = f'{self.GM_names[0]}_1'
+        elif self.running_case == 'pushover':
+            subFolder = 'Pushover'
+        elif self.running_case == 'th':
+            subFolder = f'{self.GM_names[0]}'
+        else:
+            raise ValueError(f'未知的`running_case`类型：{self.running_case}')
+        T = np.loadtxt(self.root / subFolder / 'Period.out')
         for i in range(self.N):
-            mode[i] = np.loadtxt(self.root / f'EigenAnalysis/EigenVectorsMode{i+1}.out')[0]
+            mode[i] = np.loadtxt(self.root / subFolder / f'mode{i+1}.out')
             np.savetxt(self.root_out/f'第{i+1}振型.out', mode[i])
             if i + 1 == self.max_mode:
                 break
         np.savetxt(self.root_out/'周期(s).out', T)
         if print_result:
-            print(f'周期：{T}')
-        logger.success('完成')
+            print('周期：', T, sep='')
+        logger.success('完成     ')
 
 
     def _read_other(self, print_result):
@@ -248,8 +250,6 @@ class DataProcessing:
                     # 遍历楼层
                     data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]
                     data_max= max(abs(data))
-                    if gm_name == 'th2':
-                        print(data_max)  # TODO
                     data_res = data[-1]
                     IDR[story] = data_max
                     IDR_res[story] = data_res
@@ -261,7 +261,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     @staticmethod
     def _get_cumulative_results(list_: list | np.ndarray) -> float:
@@ -304,7 +304,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
         
     def _read_shear(self, print_result):
         # 读取层剪力、底部剪力时程
@@ -338,7 +338,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     @staticmethod
     def _get_gm(path_: str | Path, gm_name, suffix='.txt') -> tuple[np.ndarray, float]:
@@ -389,7 +389,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     @staticmethod
     def _get_v(a: np.ndarray, t:np.ndarray) -> np.ndarray:
@@ -446,7 +446,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     def _read_beanHinge(self, print_result):
         """行数=楼层数，列数=柱子数，
@@ -493,7 +493,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     def _read_colHinge(self, print_result):
         """行数=层数*2，列数=柱子数，每一列中，随行数增大柱铰的实际位置顺序从下到上        
@@ -539,7 +539,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     def _read_panelZone(self, print_result):
         """行数=层数，列数=柱子数，每一列中，随行数增大节点的实际位置顺序从下到上        
@@ -568,7 +568,7 @@ class DataProcessing:
                 num += 1
                 if self.running_case == 'time history':
                     break
-        logger.success('完成')
+        logger.success('完成     ')
 
     @staticmethod
     def _get_x(x: list, y: list, y0: float) -> float:
@@ -695,7 +695,7 @@ class DataProcessing:
             plt.xlabel('Nominal floor displacement (%)')
             plt.ylabel('Floor')
             plt.show()
-        logger.success('完成')
+        logger.success('完成     ')
 
     def read_th(self):
         if not self.running_case == 'time history':
