@@ -9,7 +9,9 @@ from MRFcore.FragilityAnalysis import FragilityAnalysis
 
 周期备忘：
 MRF_4S_AE:       1.421 0.442 0.228
-MRF_4S_AE:       1.242 0.406 0.2
+MRF_4S_AS:       1.242 0.406 0.2
+6SRCF1_noWall:   1.287 0.405 0.213 (不考虑等效刚度)
+                 2.0   0.644 0.343 (考虑等效刚度)
 
 在运行任何新模型前:
 1 - 确保地震动选择及缩放的相关方法中结构的周期正确
@@ -20,28 +22,28 @@ OS模型中的单位：N, mm, t
 
 def run():
 
-    notes = """4层3跨钢框架模型，由Dr Elkady设计，采用RBS梁柱连接
+    notes = """6层3跨钢筋混凝土框架
     """  # 模型说明
-    model = MRF('MRF_4S_AS', N=4, notes=notes, script='tcl')
-    model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-    # model.select_ground_motions(['th2'], suffix='.th')
-    T1 = 1.242
-    # model.scale_ground_motions('data/DBE_AE.txt', method='i', para=(T1, 1), plot=False, SF_code=1.5)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir='H:/MRF_results/4SMRF_AS', fv_duration=30, display=True, auto_quit=False)
+    model = MRF('6SRCF1_noWall', N=6, notes=notes, script='tcl')
+    # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
+    model.select_ground_motions(['th2'], suffix='.th')
+    T1 = 1.287
+    # model.scale_ground_motions('data/DBE_AE.txt', method='i', para=(T1, 1), plot=True, SF_code=1.5)  # 只有跑时程需要定义
+    model.set_running_parameters(Output_dir='E:/MRF_results/test/6SRCF', fv_duration=30, display=True, auto_quit=False)
     # model.run_time_history(print_result=True)
-    model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, parallel=22, print_result=False)
-    # model.run_pushover(print_result=True)
-    # QuakeReadPushover('H:/MRF_results/test/4SMRF_AE')
+    # model.run_IDA(T1, 0.1, 0.1, 0.01, max_ana=80, parallel=22, print_result=False)
+    model.run_pushover(print_result=True)
+    QuakeReadPushover('E:/MRF_results/test/6SRCF')
 
 
 def data_processing():
 
     time0 = time.time()
-    model = DataProcessing(r'H:/MRF_results/4SMRF_AS', gm_suffix='.th')
-    model.set_output_dir(r'H:/MRF_results/4SMRF_AS_out', cover=1)
+    model = DataProcessing(r'E:/MRF_results/test/6SRCF', gm_suffix='.th')
+    model.set_output_dir(r'E:/MRF_results/test/6SRCF_out', cover=1)
     model.read_results('mode', 'IDR')
     model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
-    # model.read_pushover(H=16300, plot_result=True)
+    model.read_pushover(H=16300, plot_result=True)
     # model.read_th()  # 只有时程分析工况需要用
     time1 = time.time()
     print('耗时', time1 - time0)
@@ -67,8 +69,8 @@ def fragility_analysis():
 if __name__ == "__main__":
 
     run()
-    data_processing()
-    fragility_analysis()
+    # data_processing()
+    # fragility_analysis()
 
     pass
 
