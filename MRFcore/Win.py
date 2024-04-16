@@ -67,7 +67,10 @@ class MyWin(QDialog):
         self.setWindowFlags(Qt.WindowMinMaxButtonsHint)
         self.set_ui_progrsssBar(('初始化中...', 0))
         if self.running_case == 'th':
-            self.ui.label_3.setText('正在运行：时程分析')
+            if self.main.parallel:
+                self.ui.label_3.setText('正在运行：多进程时程分析')
+            else:
+                self.ui.label_3.setText('正在运行：时程分析')
             self.ui.label_19.setEnabled(False)
             self.ui.label_20.setEnabled(False)
             self.ui.label_9.setText('（仅IDA适用）')
@@ -193,6 +196,9 @@ class MyWin(QDialog):
         QMessageBox.information(self, '提示', '已复制至剪切板。')
 
     def kill(self):
+        if self.running_case == 'th' and self.main.parallel > 0:
+            QMessageBox.warning(self, '警告', '多进程时程分析不支持中断！')
+            return
         if self.thread_run:
             if QMessageBox.question(self, '警告', '是否中断计算？\n（在计算完该地震动后）') == QMessageBox.Yes:
                 self.thread_run.is_kill = 1
@@ -435,8 +441,10 @@ class WorkerThread(QThread):
 
 
     def run(self):
-        if self.mainWin.running_case == 'th':
+        if self.mainWin.running_case == 'th' and not self.main.parallel:
             self.run_th()
+        elif self.mainWin.running_case == 'th' and self.main.parallel:
+            self.run_th_parallel(self.main.parallel)
         elif self.mainWin.running_case == 'IDA' and not self.main.parallel:
             self.run_IDA()
         elif self.mainWin.running_case == 'IDA' and self.main.parallel:
@@ -571,6 +579,51 @@ class WorkerThread(QThread):
             self.signal_add_log.emit(f'该地震动计算耗时：{round(time_cost, 2)}s\n\n')
         else:
             self.signal_finished.emit(1)
+
+
+    def run_th_parallel(self, processes: int):
+        self.main.logger.info(f'正在进行多进程时程分析')
+        self.signal_set_ui.emit(('', '', '', '', ''))
+        queue = multiprocessing.Manager().Queue()  # 子进程向主进程通信
+        script = self.main.script
+        dir_model = self.main.dir_model
+        dir_gm = self.main.dir_gm
+        dir_subroutines = self.main.dir_subroutines
+        dir_temp = self.main.dir_temp
+        model_name = self.main.model_name
+        mpco = self.main.mpco
+        maxRunTime = self.main.maxRunTime
+        Output_dir = self.main.Output_dir
+        dir_gm = self.main.dir_gm
+        suffix = self.main.suffix
+        print_result = self.mainWin.print_result
+        method = self.main.method
+        th_para = self.main.th_para
+        OS_path = self.main.OS_path
+        ls_paras: list[tuple] = []
+        for idx in range(self.main.GM_N):
+            gm_name: str = self.main.GM_names[idx]
+            dt: float = self.main.GM_dts[idx]
+            NPTS: int = self.main.GM_NPTS[idx]
+            duration: float = self.main.GM_durations[idx]
+            fv_duration: float = self.main.fv_duration
+            SF = self.main.GM_SF[idx]
+            paras = (queue, script, dir_model, dir_gm, dir_subroutines, dir_temp, model_name, gm_name, 
+                     mpco, dt, NPTS, duration, fv_duration, maxRunTime, Output_dir, suffix,
+                     SF, method, th_para, OS_path, print_result)
+            ls_paras.append(paras)
+        with multiprocessing.Pool(processes) as pool:
+            results = []
+            for i in range(self.main.GM_N):
+                result = pool.apply_async(run_single_th, ls_paras[i])  # 设置进程池
+                results.append(result)
+            self.get_queue(queue)
+            for result in results:
+                output = result.get()
+            pool.close()
+            pool.join()
+        self.signal_finished.emit(1)
+    
 
 
     def run_IDA(self):
@@ -1210,6 +1263,119 @@ def run_single_IDA_tcl(
         message = ('b', f'{gm_name}完成({now()})\n')
         queue.put(message)
         return
+
+
+def run_single_th(
+    queue: multiprocessing.Queue,
+    script: Literal['tcl', 'py'],
+    dir_model: Path,
+    dir_gm: Path,
+    dir_subroutines: Path,
+    dir_temp: Path,
+    model_name: str,
+    gm_name: str,
+    mpco: bool,
+    dt: float,
+    NPTS: int,
+    duration: float,
+    fv_duration: float,
+    maxRunTime: float,
+    Output_dir: Path,
+    suffix: str,
+    SF: float,
+    method,
+    th_para,
+    OS_path: str,
+    print_result: bool
+):
+    """
+    计算单条地震动的IDA分析(基于tcl)，
+    该函数仅用于多进程，无法详细地更新ui监控信息。
+    队列格式：(信息类型，信息值)
+    信息类型：
+    * a-该条地震动IDA开始  
+    * b-该条地震动IDA结束
+    * c-第xx次计算开始
+    * d-第xx次计算结束
+    * e-首次计算即倒塌
+    * f-超过最大计算次数仍未找到倒塌点
+    * g-不收敛
+    * h-超过最大计算时间
+    """
+    now = lambda: datetime.datetime.now().strftime('%H:%M')
+    message = ('a', f'{gm_name}开始({now()})\n')
+    queue.put(message)
+    time_gm_start = time.time()
+    maxRoofDrift = 0.1
+    display = False
+    running_case = 'th'
+    if script == 'tcl':
+        WorkerThread.modify_script(
+            dir_model, model_name, maxRunTime, running_case,
+            dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
+            Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
+        cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
+        if print_result:
+            subprocess.call(cmd)
+        else:
+            subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(dir_temp/ f'{gm_name}_CollapseState.txt'):
+            collapsed = 1
+            os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
+        else:
+            collapsed = 0
+    else:
+        module = import_module(f'models.{model_name}')
+        run_openseespy = getattr(module, 'run_openseespy')
+        # maxRunTime
+        EQorPO = 'EQ'
+        ShowAnimation = False
+        MPCO = False
+        MainFolder = Output_dir
+        GMname = gm_name
+        SubFolder = f'{gm_name}'
+        GMdt = dt
+        GMpoints = NPTS
+        GMduration = duration
+        FVduration = fv_duration
+        EqSF = SF
+        GMFile = dir_gm / f'{gm_name}{suffix}'
+        maxRoofDrift = 0.1
+        paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                 GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+        with HiddenPrints(not print_result):
+            result = run_openseespy(*paras)  # 运行分析
+        if result[2]:
+            collapsed = 1  # 分析完成，倒塌
+        else:
+            collapsed = 0  # 分析完成，未倒塌
+        if result[0] == 2:
+            s = '倒塌'if collapsed else '未倒塌'
+            message = ('g', f'{gm_name}计算不收敛({s})\n')
+            queue.put(message)
+        elif result[0] == 3:
+            message = ('h', f'{gm_name}计算超过最大计算时间\n')
+            queue.put(message)
+    if not os.path.exists(Output_dir / f'{gm_name}'):
+        os.makedirs(Output_dir / f'{gm_name}')
+    Sa = None
+    if method == 'd':
+        Sa = th_para  # 指定PGA
+    elif method == 'i':
+        Sa = th_para[1]  # 指定Sa(Ta)
+    elif method == 'j':
+        Sa = th_para[2]  # 指定Sa,avg
+    if Sa:
+        np.savetxt(Output_dir / gm_name / 'Sa.dat', np.array([Sa]))
+    with open(Output_dir/ gm_name / 'isCollapsed.dat', 'w') as f:
+        f.write(str(collapsed))
+    if script == 'tcl':
+        os.remove(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl')    
+    time_gm_end = time.time()
+    time_cost = time_gm_end - time_gm_start
+    s = '倒塌'if collapsed else '未倒塌'
+    message = ('b', f'{gm_name}完成_{s}\n')
+    queue.put(message)
 
 
 class HiddenPrints:

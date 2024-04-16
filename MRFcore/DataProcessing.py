@@ -227,7 +227,7 @@ class DataProcessing:
                     data = np.round(data, 6)
                     np.savetxt(self.root_out/subfolder/'Sa.out', np.array([data]))
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         
     def _read_IDR(self, print_result):
@@ -259,7 +259,7 @@ class DataProcessing:
                 roof_d = pd.read_csv(folder/f'Disp{self.N+1}.out', header=None).to_numpy()[11:, 0]
                 np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d)
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -302,7 +302,7 @@ class DataProcessing:
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'累积层间位移角.out', CIDR)
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
         
@@ -336,7 +336,7 @@ class DataProcessing:
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'楼层剪力(g).out', shear)
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -387,7 +387,7 @@ class DataProcessing:
                 roof_a = roof_a - roof_a_base[11:]
                 np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', roof_a)
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -444,7 +444,7 @@ class DataProcessing:
                 roof_v = roof_v - roof_v_base[11:]
                 np.savetxt(self.root_out/subfolder/'屋顶速度时程(绝对).out', roof_v)
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -491,7 +491,7 @@ class DataProcessing:
                             hinge_result[story-1, 2+(col-2)*2] = theta_r
                 np.savetxt(self.root_out/subfolder/'梁铰变形.out', hinge_result, fmt='%.6f')
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -537,7 +537,7 @@ class DataProcessing:
                             hinge_result[2*(story-2)+2, col-1] = theta_T
                 np.savetxt(self.root_out/subfolder/'柱铰变形.out', hinge_result, fmt='%.6f')
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -566,7 +566,7 @@ class DataProcessing:
                         hinge_result[story-2, col-1] = theta
                 np.savetxt(self.root_out/subfolder/'节点域变形.out', hinge_result, fmt='%.6f')
                 num += 1
-                if self.running_case == 'time history':
+                if self.running_case == 'th':
                     break
         logger.success('完成     ')
 
@@ -698,7 +698,7 @@ class DataProcessing:
         logger.success('完成     ')
 
     def read_th(self):
-        if not self.running_case == 'time history':
+        if not self.running_case == 'th':
             logger.warning('【Error】方法read_th仅限用于时程分析工况')
             return
         if not Path(self.root_out/'结果统计').exists():
@@ -721,29 +721,35 @@ class DataProcessing:
         col_hinge_stat = np.zeros((5, self.N * 2, self.span + 1))
         panel_zone = np.zeros((self.GM_N, self.N, self.span + 1))  # 节点域变形
         panel_zone_stat = np.zeros((5, self.N, self.span + 1))
+        def MyLoadtxt(path: Path, array: np.ndarray):
+            try:
+                res = np.loadtxt(path)
+            except:
+                res = array
+            return res
         for idx_gm, gm_name in enumerate(self.GM_names):
             # 倒塌判断
             clps = np.loadtxt(self.root_out/gm_name/'倒塌判断.out')
             if clps == 1:
                 logger.warning(f'{gm_name}发生倒塌！')
             # 最大层间位移角
-            IDR[:, idx_gm] = np.loadtxt(self.root_out/gm_name/'层间位移角.out')
+            IDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层间位移角.out', IDR[:, idx_gm])
             # 最大楼层剪力
-            Shear[:, idx_gm] = np.loadtxt(self.root_out/gm_name/'楼层剪力(g).out')
+            Shear[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'楼层剪力(g).out', Shear[:, idx_gm])
             # 累积层间位移角
-            CIDR[:, idx_gm] = np.loadtxt(self.root_out/gm_name/'累积层间位移角.out')
+            CIDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'累积层间位移角.out', CIDR[:, idx_gm])
             # 层速度
-            PFV[:, idx_gm] = np.loadtxt(self.root_out/gm_name/'层速度.out')
+            PFV[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层速度.out', PFV[:, idx_gm])
             # 层加速度
-            PFA[:, idx_gm] = np.loadtxt(self.root_out/gm_name/'层加速度(g).out')
+            PFA[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层加速度(g).out', PFA[:, idx_gm])
             # 残余层间位移角
-            RIDR[:, idx_gm] = abs(np.loadtxt(self.root_out/gm_name/'残余层间位移角.out'))
+            RIDR[:, idx_gm] = abs(MyLoadtxt(self.root_out/gm_name/'残余层间位移角.out', RIDR[:, idx_gm]))
             # 梁铰变形
-            beam_hinge[idx_gm] = np.loadtxt(self.root_out/gm_name/'梁铰变形.out')
+            beam_hinge[idx_gm] = MyLoadtxt(self.root_out/gm_name/'梁铰变形.out', beam_hinge[idx_gm])
             # 柱铰变形
-            col_hinge[idx_gm] = np.loadtxt(self.root_out/gm_name/'柱铰变形.out')
+            col_hinge[idx_gm] = MyLoadtxt(self.root_out/gm_name/'柱铰变形.out', col_hinge[idx_gm])
             # 节点域变形
-            panel_zone[idx_gm] = np.loadtxt(self.root_out/gm_name/'节点域变形.out')
+            panel_zone[idx_gm] = MyLoadtxt(self.root_out/gm_name/'节点域变形.out', panel_zone[idx_gm])
         # 计算统计特性
         IDR_stat[:, 0] = np.mean(IDR, axis=1)
         IDR_stat[:, 1] = np.std(IDR, axis=1)

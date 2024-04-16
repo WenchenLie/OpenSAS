@@ -476,20 +476,28 @@ class MRF:
         self.fv_duration = fv_duration
         
 
-    def run_time_history(self, print_result=False):
+    def run_time_history(self, print_result=False, parallel: int=0):
         """运行时程分析
 
         Args:
             print_result (bool, optional): 是否打印OpenSees输出的信息，默认为False
+            parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，为其他数时则代表最大进程数
         """
         if self.do_not_run:
             return
         if not self.scaling_finished:
             self.logger.error('未进行地震动缩放！')
             raise ValueError('未进行地震动缩放！')
+        if not isinstance(parallel, int) or parallel < 0:
+            self.logger.error('参数parallel格式错误，必须为大于等于0的整数')
+            raise ValueError('parallel格式错误')
+        self.parallel = parallel
+        if self.display and parallel > 0:
+            self.logger.warning('采用多进程并行计算时，暂不支持显示实时动画')
+            self.display = False
         self.logger.info('开始进行时程分析')
         with open(f'{self.Output_dir}/running_case.dat', 'w') as f:
-            f.write('time history')
+            f.write('th')
         self._exec_win(running_case='th', IDA_para=None, print_result=print_result)
 
 
