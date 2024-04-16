@@ -415,7 +415,7 @@ class DataProcessing:
 
     def _read_PFV(self, print_result):
         # 读取楼层速度
-        logger.info('正在读取楼层楼层速度...')
+        logger.info('正在读取楼层速度...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
             gm_name = self.GM_names[idx_gm]

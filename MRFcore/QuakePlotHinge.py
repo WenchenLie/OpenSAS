@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Literal
 
 
-def QuakePlotHinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None, int=None, axis: int=None, position: Literal['B', 'T', 'L', 'R']=None):
+def QuakePlotHinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None, axis: int=None, position: Literal['B', 'T', 'L', 'R']=None):
+    folder = Path(folder)
     if not folder.exists():
         raise ValueError(f'`{folder}`不存在')
     if hinge == 'b':
@@ -15,13 +16,13 @@ def QuakePlotHinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None
     if hinge == 'c':
         if not all([floor, axis, position]):
             raise ValueError('柱铰位置参数有误')
-        theta = np.loadtxt(folder/f'ColSpring{floor}{axis}_{position}.out')[:, 1]
-        M = np.loadtxt(folder/f'ColSpring{floor}{axis}_{position}.out')[:, 0]
+        theta = np.loadtxt(folder/f'ColSpring{floor}_{axis}{position}.out')[:, 1]
+        M = np.loadtxt(folder/f'ColSpring{floor}_{axis}{position}.out')[:, 0]
     if hinge == 'pz':
         if not all([floor, axis]):
             raise ValueError('节点域铰位置参数有误')
         theta = np.loadtxt(folder/f'PZ{floor}_{axis}.out')[:, 1]
-        M = np.loadtxt(folder/f'PZ{floor}_{axis}.out')[:, 1]
+        M = np.loadtxt(folder/f'PZ{floor}_{axis}.out')[:, 0]
     return theta, M / 1e6
 
 

@@ -11,7 +11,7 @@ set ShowAnimation 1;  # $$$
 set MPCO 0;  # $$$
 
 # Ground motion information
-set MainFolder "E:/MRF_results/test/4SMRF";  # $$$
+set MainFolder "H:/RCF_results/test/4SMRF";  # $$$
 set GMname "th5";  # $$$
 set SubFolder "th5";  # $$$
 set GMdt 0.01;  # $$$
@@ -116,7 +116,7 @@ set PPy_1I [PPy_Overturn $PPy_1I];  set PPy_1E [PPy_Overturn $PPy_1E];
 # effective stiffness
 # beam
 set EIEg_beam 0.35;
-# set EIEg_beam 1;  # TODO test for not considering stiffness reduction
+set EIEg_beam 1;  # TODO test for not considering stiffness reduction
 # colomu
 set EIEg_col_1I [expr 0.75 * pow(0.1 + $PPy_1I, 0.8)]; set EIEg_col_1E [expr 0.75 * pow(0.1 + $PPy_1E, 0.8)];  # story 1
 set EIEg_col_2I [expr 0.75 * pow(0.1 + $PPy_2I, 0.8)]; set EIEg_col_2E [expr 0.75 * pow(0.1 + $PPy_2E, 0.8)];  # story 2
@@ -128,7 +128,7 @@ proc EI_range {EIEg} {
 	set result $EIEg
 	if {$result < 0.2} {set result 0.2}
 	if {$result > 0.6} {set result 0.6}
-	# set result 1.0;  # TODO test for not considering stiffness reduction
+	set result 1.0;  # TODO test for not considering stiffness reduction
 	return $result
 }
 set EIEg_col_1I [EI_range $EIEg_col_1I]; set EIEg_col_1E [EI_range $EIEg_col_1E];
@@ -380,6 +380,56 @@ recorder Element -file $MainFolder/$SubFolder/BeamSpring7_1R.out -ele 10070109 m
 if {$MPCO == 1} {
     recorder mpco $MainFolder$SubFolder/result.mpco -N displacement acceleration modesOfVibration -E material.stress material.strain;
 }
+
+
+
+# ---------------------- TMIW ---------------------------------
+# Material
+uniaxialMaterial Concrete02 101 -2.322  -0.0008 -0.5073 -0.0083;  # wall at story 1
+uniaxialMaterial Concrete02 102 -2.5157 -0.0008 -0.4996 -0.0084;  # wall at story 2
+uniaxialMaterial Concrete02 103 -2.4973 -0.0008 -0.4795 -0.0084;  # wall at story 3
+uniaxialMaterial Concrete02 104 -2.5343 -0.0008 -0.4887 -0.0084;  # wall at story 4
+uniaxialMaterial Concrete02 105 -2.5267 -0.0008 -0.4807 -0.0084;  # wall at story 5
+uniaxialMaterial Concrete02 106 -2.5175 -0.0008 -0.4719 -0.0084;  # wall at story 6
+
+# Effective area
+set wall_A1 1615.6e2;
+set wall_A2 1367.3e2;
+set wall_A3 1367.3e2;
+set wall_A4 1343.4e2;
+set wall_A5 1343.4e2;
+set wall_A6 1343.4e2;
+
+# Elements / \ / \
+# element truss 101 10010100 11020200 $wall_A1 101; element truss 102 10010200 11020100 $wall_A1 101;  element truss 103 10010300 11020400 $wall_A1 101;  element truss 104 10010400 11020300 $wall_A1 101; 
+element truss 201 11020100 11030200 $wall_A2 102; element truss 202 11020200 11030100 $wall_A2 102;  element truss 203 11020300 11030400 $wall_A2 102;  element truss 204 11020400 11030300 $wall_A2 102; 
+element truss 301 11030100 11040200 $wall_A3 103; element truss 302 11030200 11040100 $wall_A3 103;  element truss 303 11030300 11040400 $wall_A3 103;  element truss 304 11030400 11040300 $wall_A3 103; 
+element truss 401 11040100 11050200 $wall_A4 104; element truss 402 11040200 11050100 $wall_A4 104;  element truss 403 11040300 11050400 $wall_A4 104;  element truss 404 11040400 11050300 $wall_A4 104; 
+element truss 501 11050100 11060200 $wall_A5 105; element truss 502 11050200 11060100 $wall_A5 105;  element truss 503 11050300 11060400 $wall_A5 105;  element truss 504 11050400 11060300 $wall_A5 105; 
+element truss 601 11060100 11070200 $wall_A6 106; element truss 602 11060200 11070100 $wall_A6 106;  element truss 603 11060300 11070400 $wall_A6 106;  element truss 604 11060400 11070300 $wall_A6 106; 
+
+# Masses (Each wall 3.813 t (1st story) or 3.509 t (2-6th story))
+set m_wall_1 3.813;
+set m_wall_2 3.509;
+mass 11020100 [expr $m_wall_1/2] 1.e-9 1.e-9; mass 11020200 [expr $m_wall_1/2] 1.e-9 1.e-9; mass 11020300 [expr $m_wall_1/2] 1.e-9 1.e-9; mass 11020400 [expr $m_wall_1/2] 1.e-9 1.e-9; 
+mass 11030100 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11030200 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11030300 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11030400 [expr $m_wall_2/2] 1.e-9 1.e-9; 
+mass 11040100 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11040200 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11040300 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11040400 [expr $m_wall_2/2] 1.e-9 1.e-9; 
+mass 11050100 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11050200 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11050300 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11050400 [expr $m_wall_2/2] 1.e-9 1.e-9; 
+mass 11060100 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11060200 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11060300 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11060400 [expr $m_wall_2/2] 1.e-9 1.e-9; 
+mass 11070100 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11070200 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11070300 [expr $m_wall_2/2] 1.e-9 1.e-9; mass 11070400 [expr $m_wall_2/2] 1.e-9 1.e-9; 
+
+# Recorders / \ / \
+#
+recorder Element -file $MainFolder/$SubFolder/Wall1_1.out -ele 101 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall1_2.out -ele 102 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall1_3.out -ele 103 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall1_4.out -ele 104 material stressStrain;
+recorder Element -file $MainFolder/$SubFolder/Wall2_1.out -ele 201 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall2_2.out -ele 202 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall2_3.out -ele 203 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall2_4.out -ele 204 material stressStrain;
+recorder Element -file $MainFolder/$SubFolder/Wall3_1.out -ele 301 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall3_2.out -ele 302 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall3_3.out -ele 303 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall3_4.out -ele 304 material stressStrain;
+recorder Element -file $MainFolder/$SubFolder/Wall4_1.out -ele 401 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall4_2.out -ele 402 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall4_3.out -ele 403 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall4_4.out -ele 404 material stressStrain;
+recorder Element -file $MainFolder/$SubFolder/Wall5_1.out -ele 501 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall5_2.out -ele 502 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall5_3.out -ele 503 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall5_4.out -ele 504 material stressStrain;
+recorder Element -file $MainFolder/$SubFolder/Wall6_1.out -ele 601 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall6_2.out -ele 602 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall6_3.out -ele 603 material stressStrain;  recorder Element -file $MainFolder/$SubFolder/Wall6_4.out -ele 604 material stressStrain;
+
+
+
+
 
 ###################################################################################################
 #                                              NODAL MASS                                         #

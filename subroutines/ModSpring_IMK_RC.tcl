@@ -37,7 +37,9 @@
 #				   2 --> inches and ksi
 # L         Member length (modified by Lie)
 # EIyEIg    Stiffness reduce ratio (modified by Lie)
+# type_     1 - beam, 2 - column
 # note      One can print the IMK model parameters if "note" is given
+# sf        Scale factor of yield moment
 #
 # gamma     Normalized energy dissipation capacity; it is important to note that this is a normalized value
 #			defined by the total energy dissipation capacity of Et = λMyθy. When creating an element
@@ -49,13 +51,13 @@
 ##################################################################################################################
 
 
-proc ModSpring_IMK_RC {SpringID NodeI NodeJ fc Ec fy Es b h d1 s rho_C rho_T rho_I rho_SH a_sl PPc Units L EIyEIg {note ""} {sf 1.0}} {
+proc ModSpring_IMK_RC {SpringID NodeI NodeJ fc Ec fy Es b h d1 s rho_C rho_T rho_I rho_SH a_sl PPc Units L EIyEIg type_ {note ""} {sf 1.0}} {
 
 # PS by Lie: The terms `fc` and `fy` should be expected strengths.
 
-set rho_C [expr $rho_C * $sf]
-set rho_T [expr $rho_T * $sf]
-set rho_I [expr $rho_I * $sf]
+# set rho_C [expr $rho_C * $sf]
+# set rho_T [expr $rho_T * $sf]
+# set rho_I [expr $rho_I * $sf]
 
 ###################################################################
 # Pre-calculation parameters
@@ -103,10 +105,35 @@ if {$c<$cb} {
     set curv_y  [expr 1.8 * $fc/($Ec*$d*$ky)];
 }
 
+
 set term1	[expr $Ec*pow($ky,2)/2*(0.5*(1 + $delta1) - $ky/3)];
 set term2	[expr $Es/2*((1 - $ky)*$rho_T+($ky-$delta1)*$rho_C+$rho_I/6*(1 - $delta1))*(1 - $delta1)];
 
 set My		[expr  $b * pow($d,3)*$curv_y*($term1+$term2)];
+set My [expr $sf * $My]
+
+# ------------- calcuated by GB50010 -------------------
+# set A_T  [expr $rho_T * $b * $h];
+# set A_C  [expr $rho_C * $b * $h];
+# set h0 [expr $h - $d1]
+# set beta1 0.8
+# set a1 1.0;
+# set eps_cu [expr 0.0033 - (30. - 50.) * 1.e-5]
+# set ksaib [expr $beta1 / (1 + $fy / ($Es * $eps_cu))]
+# set a1fcbx [expr $fy * $A_T - $fy * $A_C]
+# set x [expr $a1fcbx / $fc / $b]
+# set My_p [expr $a1fcbx * ($h0 - $x/2) + $fy * $A_C * ($h0 - $d1)]
+# set My_p [expr $My_p * $sf]
+# set My_n $My_p
+# set My_n [expr $My_n * $sf]
+# set a1fcbx_ [expr -$fy * $A_T + $fy * $A_C]
+# set x_ [expr $a1fcbx_ / $fc / $b]
+# set My_n [expr $a1fcbx_ * ($h0 - $x_/2) + $fy * $A_C * ($h0 - $d1)]
+
+
+
+
+
 
 ###################################################################
 # Compute backbone parameters as per Haselton et al (2008)
@@ -128,12 +155,25 @@ set I [expr 1.0 / 12 * $b * $h ** 3]
 set Ke [expr ($n + 1.0) * 6 * $Ec * $I / $L];
 
 set MresMy 0.01;
-set theta_y [expr $My / $Ke]
+# set theta_y [expr $My / $Ke]
 set theta_u 0.2
+
+# TODO
+# if {$type_ == 1} {
+#     set theta_p 0.035
+#     set theta_pc 0.06
+# } else {
+#     set theta_p 0.06;
+#     set theta_pc 0.1
+# }
+
+
+
 uniaxialMaterial IMKPeakOriented $SpringID $Ke $theta_p $theta_pc $theta_u $My $McMy $MresMy $theta_p $theta_pc $theta_u $My $McMy $MresMy $LAMBDA $LAMBDA $LAMBDA $LAMBDA 1 1 1 1 1 1;
+# uniaxialMaterial IMKPeakOriented $SpringID $Ke $theta_p $theta_pc $theta_u $My_p $McMy $MresMy $theta_p $theta_pc $theta_u $My_n $McMy $MresMy $LAMBDA $LAMBDA $LAMBDA $LAMBDA 1 1 1 1 1 1;
 element zeroLength $SpringID $NodeI $NodeJ  -mat 99 99 $SpringID -dir 1 2 6 -doRayleigh 1;
 
-if {$note ne ""} {puts "$note:\nKe: $Ke, theta_p: $theta_p, theta_pc: $theta_pc, My: $My, lamda: $lambda"}
+if {$note ne ""} {puts "$note:\nKe: [expr int($Ke/1.e6)] kNm, theta_p: [format "%.4f" $theta_p], theta_pc: [format "%.4f" $theta_pc], My_p: [expr int($My_p/1.e6)] My_n: [expr int($My_n/1.e6)], lamda: [format "%.2f" $lambda]"}
 
 }
 

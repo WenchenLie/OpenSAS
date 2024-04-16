@@ -20,7 +20,7 @@ def QuakeReadPushover(folder: Path):
     plt.plot(SDR * 100, shear)
     plt.xlabel('Roof drift ratio [%]')
     plt.ylabel('Normalised base shear, V/W')
-    plt.xlim(0, 6)
+    plt.xlim(0, 10)
     plt.ylim(0)
     plt.show()
 
