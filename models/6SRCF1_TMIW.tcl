@@ -544,7 +544,7 @@ if {$EQ==1} {
     set AccelSeries "Series -dt $GMdt -filePath $GMFile -factor [expr $EqSF * $g]";
     pattern UniformExcitation 200 1 -accel $AccelSeries;
     set totTime [expr $GMduration + $FVduration];
-    set CollapseDrift 0.15;
+    set CollapseDrift 0.15;  # $$$
     set MaxAnalysisDrift 0.5;
     set result [TimeHistorySolver $GMdt $GMduration $story_heights $MF_FloorNodes $CollapseDrift $MaxAnalysisDrift $GMname $maxRunTime $temp];
     set status [lindex $result 0];

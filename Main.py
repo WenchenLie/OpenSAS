@@ -32,15 +32,15 @@ def run():
 
     notes = """6层3跨钢筋混凝土框架-无填充墙，按有填充墙设计，设计时考虑周期折减系数0.7，分析时删去墙部分的质量
     """  # 模型说明
-    model = MRF('STKO_6SRCF_TMIW', N=6, notes=notes, script='tcl')
+    model = MRF('MRF_4S_AE', N=6, notes=notes, script='py')
     # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
     model.select_ground_motions([f'GM{i}' for i in range(1, 12)], suffix='.txt')
     # model.select_ground_motions(['th2'], suffix='.th')
-    T1 = 0.615
+    T1 = 1.242
     model.scale_ground_motions('data/RCF6S_DBE.txt', method='a', para=None, plot=True, SF_code=1)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir='H:/RCF_results/STKO_6SRCF_TMIW_DBE', fv_duration=0, display=False, auto_quit=False)
-    model.run_time_history(print_result=True, parallel=22)
-    # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=22, print_result=False)
+    model.set_running_parameters(Output_dir='H:/MRF_results/test/MRF_4S_AE', fv_duration=0, display=False, auto_quit=False)
+    # model.run_time_history(print_result=True, parallel=0)
+    model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=0, print_result=False)
     # model.run_pushover(0.1, print_result=True)
     # QuakeReadPushover('H:/RCF_results/test/STKO_6SRCF')
 
@@ -78,10 +78,10 @@ def fragility_analysis():
 
 if __name__ == "__main__":
 
-    # run()
+    run()
     # QuakeReadPushover('H:/RCF_results/6SRCFnoWall_pushover')
     # QuakePlotHinge(r'H:\RCF_results\6SRCFnoWall_pushover\Pushover', 'c', floor=2, axis=1, position='B')
-    data_processing()
+    # data_processing()
     # fragility_analysis()
 
     pass

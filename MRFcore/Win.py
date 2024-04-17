@@ -185,6 +185,8 @@ class MyWin(QDialog):
                 with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.{self.main.script}', 'r') as f:
                     text = f.read()
         else:
+            QMessageBox.warning(self, '警告', 'openseespy脚本暂不支持查看运行代码！')
+            return
             paras = self.openseespy_paras
             added_text = '\n\n'
             added_text += 'if name == "__main__":\n'
@@ -333,6 +335,9 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(self.main.maxRoofDrift) + r'\g<2>', text)
+        pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(self.main.collapse_limit) + r'\g<2>', text)
         with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
@@ -342,8 +347,8 @@ class WorkerThread(QThread):
         dir_model: Path, model_name: Path, maxRunTime: float, running_case: str,
         dir_gm: Path, dir_subroutines: Path, dir_temp: Path, suffix: str, display: bool, mpco: bool, maxRoofDrift: float,
         Output_dir: Path, gm_name: str, dt: str | float,
-        NPTS: int | float, duration: float | str,
-        fv_duration: float | str, SF: float | str, num: int=None):
+        NPTS: int | float, duration: float | str, fv_duration: float | str,
+        SF: float | str, collapse_limit: float, num: int=None):
         """采用正则表达式修改脚本文件(仅当采用tcl脚本时需要修改)
 
         Args:
@@ -423,6 +428,9 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
         WorkerThread.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(maxRoofDrift) + r'\g<2>', text)
+        pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
+        text = pattern.sub(r'\g<1>' + str(collapse_limit) + r'\g<2>', text)
         with open(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
@@ -547,8 +555,9 @@ class WorkerThread(QThread):
                 EqSF = SF
                 GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
                 maxRoofDrift = 0.1
+                collapse_limit = self.main.collapse_limit
                 paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                         GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+                         GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
                 self.signal_send_openseespy_paras.emit(paras)
                 result = run_openseespy(*paras)
                 if result[2]:
@@ -600,6 +609,7 @@ class WorkerThread(QThread):
         method = self.main.method
         th_para = self.main.th_para
         OS_path = self.main.OS_path
+        collapse_limit = self.main.collapse_limit
         ls_paras: list[tuple] = []
         for idx in range(self.main.GM_N):
             gm_name: str = self.main.GM_names[idx]
@@ -610,7 +620,7 @@ class WorkerThread(QThread):
             SF = self.main.GM_SF[idx]
             paras = (queue, script, dir_model, dir_gm, dir_subroutines, dir_temp, model_name, gm_name, 
                      mpco, dt, NPTS, duration, fv_duration, maxRunTime, Output_dir, suffix,
-                     SF, method, th_para, OS_path, print_result)
+                     SF, method, th_para, OS_path, print_result, collapse_limit)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
             results = []
@@ -716,9 +726,10 @@ class WorkerThread(QThread):
                     EqSF = SF
                     GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
                     maxRoofDrift = 0.1
+                    collapse_limit = self.main.collapse_limit
                     print_result = self.mainWin.print_result
                     paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, print_result]
+                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
                     self.signal_send_openseespy_paras.emit(paras)
                     with HiddenPrints(not print_result):
                         result = run_openseespy(*paras)
@@ -803,6 +814,7 @@ class WorkerThread(QThread):
         intensity_measure = self.mainWin.intensity_measure
         trace_collapse = self.main.trace_collapse
         print_result = self.mainWin.print_result
+        collapse_limit = self.main.collapse_limit
         for idx in range(self.main.GM_N):
             gm_name: str = self.main.GM_names[idx]
             dt: float = self.main.GM_dts[idx]
@@ -812,7 +824,8 @@ class WorkerThread(QThread):
             RSA = self.mainWin.RSA[idx]
             paras = (queue, self.stop_event, run_openseespy, gm_name, dt, NPTS, duration, fv_duration, maxRunTime,
                      Output_dir, MainFolder, dir_gm, suffix, T0, T_range, T, RSA,
-                     intensity_measure, Sa0, Sa_incr, tol, max_ana, trace_collapse, print_result)
+                     intensity_measure, Sa0, Sa_incr, tol, max_ana, trace_collapse, print_result,
+                     collapse_limit)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
             results = []
@@ -850,6 +863,7 @@ class WorkerThread(QThread):
         T = self.main.T
         intensity_measure = self.mainWin.intensity_measure
         trace_collapse = self.main.trace_collapse
+        collapse_limit = self.main.collapse_limit
         for idx in range(self.main.GM_N):
             gm_name: str = self.main.GM_names[idx]
             dt: float = self.main.GM_dts[idx]
@@ -860,7 +874,8 @@ class WorkerThread(QThread):
             paras = (queue, self.stop_event, dir_model, dir_gm, dir_subroutines, dir_temp,
                      model_name, gm_name, mpco, dt, NPTS, duration, fv_duration, maxRunTime,
                      Output_dir, suffix, T0, T_range, T, RSA, intensity_measure,
-                     Sa0, Sa_incr, tol, max_ana, trace_collapse, OS_path, print_result)
+                     Sa0, Sa_incr, tol, max_ana, trace_collapse, OS_path, print_result,
+                     collapse_limit)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
             for i in range(self.main.GM_N):
@@ -1001,7 +1016,8 @@ def run_single_IDA_py(
     tol: float,
     max_ana: int,
     trace_collapse: bool,
-    print_result: bool
+    print_result: bool,
+    collapse_limit: float
 ):
     """
     计算单条地震动的IDA分析(基于openseespy)，
@@ -1057,7 +1073,7 @@ def run_single_IDA_py(
         GMFile = dir_gm / f'{gm_name}{suffix}'
         maxRoofDrift = 0.1
         paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, print_result]
+                GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
         with HiddenPrints(not print_result):
             result = run_openseespy(*paras)  # 运行分析
         if result[2]:
@@ -1151,7 +1167,8 @@ def run_single_IDA_tcl(
     max_ana: int,
     trace_collapse: bool,
     OS_path: str,
-    print_result: bool
+    print_result: bool,
+    collapse_limit: float
 ):
     """
     计算单条地震动的IDA分析(基于tcl)，
@@ -1198,7 +1215,7 @@ def run_single_IDA_tcl(
         WorkerThread.modify_script(
             dir_model, model_name, maxRunTime, running_case,
             dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
-            Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, run_num + 1
+            Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, collapse_limit, run_num + 1
         )
         cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
         if print_result:
@@ -1286,7 +1303,8 @@ def run_single_th(
     method,
     th_para,
     OS_path: str,
-    print_result: bool
+    print_result: bool,
+    collapse_limit: float
 ):
     """
     计算单条地震动的IDA分析(基于tcl)，
@@ -1342,7 +1360,7 @@ def run_single_th(
         GMFile = dir_gm / f'{gm_name}{suffix}'
         maxRoofDrift = 0.1
         paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                 GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+                 GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
         with HiddenPrints(not print_result):
             result = run_openseespy(*paras)  # 运行分析
         if result[2]:

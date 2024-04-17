@@ -4,7 +4,7 @@ import shutil
 import re
 from pathlib import Path
 from math import pi
-from typing import Literal
+from typing import Literal, Tuple
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -170,7 +170,9 @@ class MRF:
         return f
 
 
-    def scale_ground_motions(self, path_spec_code: str, method: str, para, SF_code: float=1.0, save_SF=False,
+    def scale_ground_motions(self, path_spec_code: str, method: str,
+                             para: None | float | tuple | str,
+                             SF_code: float=1.0, save_SF=False,
                              plot=True, save_unscaled_spec=False, save_scaled_spec=False):
         """缩放地震动，仅运行时程分析前需要调用，
         如果运行IDA或者Pushover，可以不调用。  
@@ -476,11 +478,12 @@ class MRF:
         self.fv_duration = fv_duration
         
 
-    def run_time_history(self, print_result=False, parallel: int=0):
+    def run_time_history(self, print_result=False, collapse_limit: float=0.1, parallel: int=0):
         """运行时程分析
 
         Args:
             print_result (bool, optional): 是否打印OpenSees输出的信息，默认为False
+            collapse_limit (float, optional): 倒塌判定极限位移角，默认0.1
             parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，为其他数时则代表最大进程数
         """
         if self.do_not_run:
@@ -492,6 +495,7 @@ class MRF:
             self.logger.error('参数parallel格式错误，必须为大于等于0的整数')
             raise ValueError('parallel格式错误')
         self.parallel = parallel
+        self.collapse_limit = collapse_limit
         if self.display and parallel > 0:
             self.logger.warning('采用多进程并行计算时，暂不支持显示实时动画')
             self.display = False
@@ -502,9 +506,9 @@ class MRF:
 
 
     def run_IDA(
-            self, T0: float, Sa0: float, Sa_incr: float, tol: float, max_ana=30, test=False,
-            intensity_measure: Literal[1, 2]=1, T_range: tuple=None, print_result=False,
-            trace_collapse: bool=True, parallel: int=0):
+            self, T0: float, Sa0: float, Sa_incr: float, tol: float, collapse_limit: float=0.1,
+            max_ana=30, test=False, intensity_measure: Literal[1, 2]=1, T_range: tuple=None,
+             print_result=False, trace_collapse: bool=True, parallel: int=0):
         """IDA分析
 
         Args:
@@ -512,7 +516,7 @@ class MRF:
             Sa0 (float): 初始强度值  
             Sa_incr (float): 强度增量  
             tol (float): 倒塌点收敛容差  
-            collapse_limit (float): 倒塌判定极限位移角 (X)    
+            collapse_limit (float): 倒塌判定极限位移角，默认0.1  
             max_ana (int, optional): 每个地震动最大分析次数，默认30  
             test (bool, optional): 程序调试用  
             intensity_measure (int, optional): 地震动强度指标  
@@ -527,6 +531,7 @@ class MRF:
             return
         self.logger.info('开始进行IDA')
         self.trace_collapse = trace_collapse
+        self.collapse_limit = collapse_limit
         if not isinstance(parallel, int) or parallel < 0:
             self.logger.error('参数parallel格式错误，必须为大于等于0的整数')
             raise ValueError('parallel格式错误')
