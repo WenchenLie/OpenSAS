@@ -433,9 +433,10 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
         WorkerThread.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(maxRoofDrift) + r'\g<2>', text)
-        pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
-        WorkerThread.find_pattern(pattern, text)
-        text = pattern.sub(r'\g<1>' + str(collapse_limit) + r'\g<2>', text)
+        if running_case in ['IDA', 'th']:
+            pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
+            WorkerThread.find_pattern(pattern, text)
+            text = pattern.sub(r'\g<1>' + str(collapse_limit) + r'\g<2>', text)
         with open(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
@@ -492,6 +493,8 @@ class WorkerThread(QThread):
                     self.signal_add_warning.emit(text)
                 elif flag == 'h':  # 超过最大计算时间
                     self.signal_add_warning.emit(text)
+                elif flag == 'i':  # 异常
+                    raise text
                 self.signal_set_progressBar.emit((f'已完成地震动数量：{finished_GM}', int(finished_GM / self.main.GM_N * 100)))
                 if finished_GM == self.main.GM_N:
                     break
@@ -1038,111 +1041,112 @@ def run_single_IDA_py(
     * g-不收敛
     * h-超过最大计算时间
     """
-
-    now = lambda: datetime.datetime.now().strftime('%H:%M')
-    message = ('a', f'{gm_name}开始({now()})\n')
-    if not stop_event.is_set():
-        queue.put(message)
-    Sa_current = Sa0
-    if intensity_measure == 1:
-        Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
-    elif intensity_measure == 2:
-        Ta, Tb = T_range
-        Sa_range = RSA[(Ta <= T) & (T <= Tb)]
-        Sa_avg = geometric_mean(Sa_range)  # 简单几何平均数
-        Sa_original = Sa_avg  
-    iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
-    Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
-    for run_num in range(max_ana):
-        if stop_event.is_set():
-            message = ('b', f'{gm_name}退出计算\n')
+    try:
+        now = lambda: datetime.datetime.now().strftime('%H:%M')
+        message = ('a', f'{gm_name}开始({now()})\n')
+        if not stop_event.is_set():
             queue.put(message)
-            return
-        Sa_current = round(Sa_current, 5)
-        SF = Sa_current / Sa_original
-        message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
-        queue.put(message)
-        time_gm_start = time.time()
-        # maxRunTime
-        EQorPO = 'EQ'
-        ShowAnimation = False
-        MPCO = False
-        # MainFolder
-        GMname = gm_name
-        SubFolder = f'{gm_name}_{run_num+1}'
-        GMdt = dt
-        GMpoints = NPTS
-        GMduration = duration
-        FVduration = fv_duration
-        EqSF = SF
-        GMFile = dir_gm / f'{gm_name}{suffix}'
-        maxRoofDrift = 0.1
-        paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
-        with HiddenPrints(not print_result):
-            result = run_openseespy(*paras)  # 运行分析
-        if result[2]:
-            collapsed = 1  # 分析完成，倒塌
-        else:
-            collapsed = 0  # 分析完成，未倒塌
-        if result[0] == 2:
-            s = '倒塌'if collapsed else '未倒塌'
-            message = ('g', f'{gm_name}第{run_num+1}次计算不收敛({s})\n')
-            queue.put(message)
-        elif result[0] == 3:
-            message = ('h', f'{gm_name}第{run_num+1}次计算超过最大计算时间\n')
-            queue.put(message)
-        if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
-            os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
-        np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
-        with open(Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
-            f.write(str(collapsed))
-        time_gm_end = time.time()
-        time_cost = time_gm_end - time_gm_start
-        if trace_collapse:
-            # 追踪倒塌
-            if run_num == 0 and collapsed == 1:
-                # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                message = ('e', f'{gm_name}首次计算即倒塌\n')
+        Sa_current = Sa0
+        if intensity_measure == 1:
+            Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
+        elif intensity_measure == 2:
+            Ta, Tb = T_range
+            Sa_range = RSA[(Ta <= T) & (T <= Tb)]
+            Sa_avg = geometric_mean(Sa_range)  # 简单几何平均数
+            Sa_original = Sa_avg  
+        iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
+        Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
+        for run_num in range(max_ana):
+            if stop_event.is_set():
+                message = ('b', f'{gm_name}退出计算\n')
                 queue.put(message)
                 return
-            if collapsed == 0 and iter_state == 0:
-                # 如果未倒塌，且不处于迭代状态
-                Sa_l = Sa_current
-                Sa_current += Sa_incr
+            Sa_current = round(Sa_current, 5)
+            SF = Sa_current / Sa_original
+            message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
+            queue.put(message)
+            time_gm_start = time.time()
+            # maxRunTime
+            EQorPO = 'EQ'
+            ShowAnimation = False
+            MPCO = False
+            # MainFolder
+            GMname = gm_name
+            SubFolder = f'{gm_name}_{run_num+1}'
+            GMdt = dt
+            GMpoints = NPTS
+            GMduration = duration
+            FVduration = fv_duration
+            EqSF = SF
+            GMFile = dir_gm / f'{gm_name}{suffix}'
+            maxRoofDrift = 0.1
+            paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                    GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
+            with HiddenPrints(not print_result):
+                result = run_openseespy(*paras)  # 运行分析
+            if result[2]:
+                collapsed = 1  # 分析完成，倒塌
             else:
-                # 在迭代状态下，即已经出现过倒塌后
-                iter_state = 1  # 进入迭代状态
-                if collapsed == 1:
-                    # 若迭代状态下倒塌，更新最小倒塌强度
-                    Sa_r = min(Sa_current, Sa_r)
-                else:
-                    # 若迭代状态下未倒塌，更新最大未倒塌强度
-                    Sa_l = max(Sa_current, Sa_l)
-                if Sa_l > Sa_r:
-                    raise ValueError('最小倒塌强度大于最大未倒塌强度!')
-                if Sa_r - Sa_l < tol:
-                    message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
-                    queue.put(message)
-                    message = ('b', f'{gm_name}完成({now()})\n')
+                collapsed = 0  # 分析完成，未倒塌
+            if result[0] == 2:
+                s = '倒塌'if collapsed else '未倒塌'
+                message = ('g', f'{gm_name}第{run_num+1}次计算不收敛({s})\n')
+                queue.put(message)
+            elif result[0] == 3:
+                message = ('h', f'{gm_name}第{run_num+1}次计算超过最大计算时间\n')
+                queue.put(message)
+            if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
+                os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
+            np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
+            with open(Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
+                f.write(str(collapsed))
+            time_gm_end = time.time()
+            time_cost = time_gm_end - time_gm_start
+            if trace_collapse:
+                # 追踪倒塌
+                if run_num == 0 and collapsed == 1:
+                    # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
+                    message = ('e', f'{gm_name}首次计算即倒塌\n')
                     queue.put(message)
                     return
-                Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
-        else:
-            # 不追踪倒塌
-            Sa_current += Sa_incr
-        s = '倒塌'if collapsed else '未倒塌'
-        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
-        queue.put(message)
-    else:
-        # 超过最大计算次数
-        if trace_collapse:
-            message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+                if collapsed == 0 and iter_state == 0:
+                    # 如果未倒塌，且不处于迭代状态
+                    Sa_l = Sa_current
+                    Sa_current += Sa_incr
+                else:
+                    # 在迭代状态下，即已经出现过倒塌后
+                    iter_state = 1  # 进入迭代状态
+                    if collapsed == 1:
+                        # 若迭代状态下倒塌，更新最小倒塌强度
+                        Sa_r = min(Sa_current, Sa_r)
+                    else:
+                        # 若迭代状态下未倒塌，更新最大未倒塌强度
+                        Sa_l = max(Sa_current, Sa_l)
+                    if Sa_l > Sa_r:
+                        raise ValueError('最小倒塌强度大于最大未倒塌强度!')
+                    if Sa_r - Sa_l < tol:
+                        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+                        queue.put(message)
+                        message = ('b', f'{gm_name}完成({now()})\n')
+                        queue.put(message)
+                        return
+                    Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
+            else:
+                # 不追踪倒塌
+                Sa_current += Sa_incr
+            s = '倒塌'if collapsed else '未倒塌'
+            message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
             queue.put(message)
-        message = ('b', f'{gm_name}完成({now()})\n')
-        queue.put(message)
-        return
-
+        else:
+            # 超过最大计算次数
+            if trace_collapse:
+                message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+                queue.put(message)
+            message = ('b', f'{gm_name}完成({now()})\n')
+            queue.put(message)
+            return
+    except Exception as e:
+        queue.put(('i', e))
 
 def run_single_IDA_tcl(
     queue: multiprocessing.Queue,
@@ -1189,103 +1193,104 @@ def run_single_IDA_tcl(
     * g-不收敛
     * h-超过最大计算时间
     """
-
-    now = lambda: datetime.datetime.now().strftime('%H:%M')
-    message = ('a', f'{gm_name}开始({now()})\n')
-    if not stop_event.is_set():
-        queue.put(message)
-    Sa_current = Sa0
-    if intensity_measure == 1:
-        Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
-    elif intensity_measure == 2:
-        Ta, Tb = T_range
-        Sa_range = RSA[(Ta <= T) & (T <= Tb)]
-        Sa_avg = geometric_mean(Sa_range)  # 简单几何平均数
-        Sa_original = Sa_avg  
-    iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
-    Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
-    for run_num in range(max_ana):
-        if stop_event.is_set():
-            message = ('b', f'{gm_name}退出计算\n')
+    try:
+        now = lambda: datetime.datetime.now().strftime('%H:%M')
+        message = ('a', f'{gm_name}开始({now()})\n')
+        if not stop_event.is_set():
             queue.put(message)
-            return
-        Sa_current = round(Sa_current, 5)
-        SF = Sa_current / Sa_original
-        message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
-        queue.put(message)
-        time_gm_start = time.time()
-        maxRoofDrift = 0.1
-        display = False
-        running_case = 'IDA'
-        WorkerThread.modify_script(
-            dir_model, model_name, maxRunTime, running_case,
-            dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
-            Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, collapse_limit, run_num + 1
-        )
-        cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
-        if print_result:
-            subprocess.call(cmd)
-        else:
-            subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.path.exists(dir_temp/ f'{gm_name}_CollapseState.txt'):
-            collapsed = 1
-            os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
-        else:
-            collapsed = 0
-        queue.put(message)
-        if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
-            os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
-            print(Output_dir / f'{gm_name}_{run_num+1}')
-        np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
-        with open(Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
-            f.write(str(collapsed))
-        time_gm_end = time.time()
-        time_cost = time_gm_end - time_gm_start
-        if trace_collapse:
-            # 追踪倒塌
-            if run_num == 0 and collapsed == 1:
-                # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                message = ('e', f'{gm_name}首次计算即倒塌\n')
+        Sa_current = Sa0
+        if intensity_measure == 1:
+            Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
+        elif intensity_measure == 2:
+            Ta, Tb = T_range
+            Sa_range = RSA[(Ta <= T) & (T <= Tb)]
+            Sa_avg = geometric_mean(Sa_range)  # 简单几何平均数
+            Sa_original = Sa_avg  
+        iter_state = 0  # 迭代状态，当第一次出现倒塌时设为1
+        Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
+        for run_num in range(max_ana):
+            if stop_event.is_set():
+                message = ('b', f'{gm_name}退出计算\n')
                 queue.put(message)
                 return
-            if collapsed == 0 and iter_state == 0:
-                # 如果未倒塌，且不处于迭代状态
-                Sa_l = Sa_current
-                Sa_current += Sa_incr
+            Sa_current = round(Sa_current, 5)
+            SF = Sa_current / Sa_original
+            message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
+            queue.put(message)
+            time_gm_start = time.time()
+            maxRoofDrift = 0.1
+            display = False
+            running_case = 'IDA'
+            WorkerThread.modify_script(
+                dir_model, model_name, maxRunTime, running_case,
+                dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
+                Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, collapse_limit, run_num + 1
+            )
+            cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
+            if print_result:
+                subprocess.call(cmd)
             else:
-                # 在迭代状态下，即已经出现过倒塌后
-                iter_state = 1  # 进入迭代状态
-                if collapsed == 1:
-                    # 若迭代状态下倒塌，更新最小倒塌强度
-                    Sa_r = min(Sa_current, Sa_r)
-                else:
-                    # 若迭代状态下未倒塌，更新最大未倒塌强度
-                    Sa_l = max(Sa_current, Sa_l)
-                if Sa_l > Sa_r:
-                    raise ValueError('最小倒塌强度大于最大未倒塌强度!')
-                if Sa_r - Sa_l < tol:
-                    message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
-                    queue.put(message)
-                    message = ('b', f'{gm_name}完成({now()})\n')
+                subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if os.path.exists(dir_temp/ f'{gm_name}_CollapseState.txt'):
+                collapsed = 1
+                os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
+            else:
+                collapsed = 0
+            queue.put(message)
+            if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
+                os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
+                print(Output_dir / f'{gm_name}_{run_num+1}')
+            np.savetxt(Output_dir / f'{gm_name}_{run_num+1}/Sa.dat', np.array([Sa_current]))
+            with open(Output_dir / f'{gm_name}_{run_num+1}/isCollapsed.dat', 'w') as f:
+                f.write(str(collapsed))
+            time_gm_end = time.time()
+            time_cost = time_gm_end - time_gm_start
+            if trace_collapse:
+                # 追踪倒塌
+                if run_num == 0 and collapsed == 1:
+                    # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
+                    message = ('e', f'{gm_name}首次计算即倒塌\n')
                     queue.put(message)
                     return
-                Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
-        else:
-            # 不追踪倒塌
-            Sa_current += Sa_incr
-        s = '倒塌'if collapsed else '未倒塌'
-        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
-        queue.put(message)
-    else:
-        # 超过最大计算次数
-        if trace_collapse:
-            message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+                if collapsed == 0 and iter_state == 0:
+                    # 如果未倒塌，且不处于迭代状态
+                    Sa_l = Sa_current
+                    Sa_current += Sa_incr
+                else:
+                    # 在迭代状态下，即已经出现过倒塌后
+                    iter_state = 1  # 进入迭代状态
+                    if collapsed == 1:
+                        # 若迭代状态下倒塌，更新最小倒塌强度
+                        Sa_r = min(Sa_current, Sa_r)
+                    else:
+                        # 若迭代状态下未倒塌，更新最大未倒塌强度
+                        Sa_l = max(Sa_current, Sa_l)
+                    if Sa_l > Sa_r:
+                        raise ValueError('最小倒塌强度大于最大未倒塌强度!')
+                    if Sa_r - Sa_l < tol:
+                        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+                        queue.put(message)
+                        message = ('b', f'{gm_name}完成({now()})\n')
+                        queue.put(message)
+                        return
+                    Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
+            else:
+                # 不追踪倒塌
+                Sa_current += Sa_incr
+            s = '倒塌'if collapsed else '未倒塌'
+            message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
             queue.put(message)
-            pass
-        message = ('b', f'{gm_name}完成({now()})\n')
-        queue.put(message)
-        return
-
+        else:
+            # 超过最大计算次数
+            if trace_collapse:
+                message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+                queue.put(message)
+                pass
+            message = ('b', f'{gm_name}完成({now()})\n')
+            queue.put(message)
+            return
+    except Exception as e:
+        queue.put(('i', e))
 
 def run_single_th(
     queue: multiprocessing.Queue,
@@ -1325,80 +1330,83 @@ def run_single_th(
     * g-不收敛
     * h-超过最大计算时间
     """
-    now = lambda: datetime.datetime.now().strftime('%H:%M')
-    message = ('a', f'{gm_name}开始({now()})\n')
-    queue.put(message)
-    time_gm_start = time.time()
-    maxRoofDrift = 0.1
-    display = False
-    running_case = 'th'
-    if script == 'tcl':
-        WorkerThread.modify_script(
-            dir_model, model_name, maxRunTime, running_case,
-            dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
-            Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
-        cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
-        if print_result:
-            subprocess.call(cmd)
-        else:
-            subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.path.exists(dir_temp/ f'{gm_name}_CollapseState.txt'):
-            collapsed = 1
-            os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
-        else:
-            collapsed = 0
-    else:
-        module = import_module(f'models.{model_name}')
-        run_openseespy = getattr(module, 'run_openseespy')
-        # maxRunTime
-        EQorPO = 'EQ'
-        ShowAnimation = False
-        MPCO = False
-        MainFolder = Output_dir
-        GMname = gm_name
-        SubFolder = f'{gm_name}'
-        GMdt = dt
-        GMpoints = NPTS
-        GMduration = duration
-        FVduration = fv_duration
-        EqSF = SF
-        GMFile = dir_gm / f'{gm_name}{suffix}'
+    try:
+        now = lambda: datetime.datetime.now().strftime('%H:%M')
+        message = ('a', f'{gm_name}开始({now()})\n')
+        queue.put(message)
+        time_gm_start = time.time()
         maxRoofDrift = 0.1
-        paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                 GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
-        with HiddenPrints(not print_result):
-            result = run_openseespy(*paras)  # 运行分析
-        if result[2]:
-            collapsed = 1  # 分析完成，倒塌
+        display = False
+        running_case = 'th'
+        if script == 'tcl':
+            WorkerThread.modify_script(
+                dir_model, model_name, maxRunTime, running_case,
+                dir_gm, dir_subroutines, dir_temp, suffix, display, mpco, maxRoofDrift,
+                Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF, collapse_limit)
+            cmd = f'"{OS_path}" "{dir_temp}/temp_running_{model_name}_{gm_name}.tcl"'
+            if print_result:
+                subprocess.call(cmd)
+            else:
+                subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if os.path.exists(dir_temp/ f'{gm_name}_CollapseState.txt'):
+                collapsed = 1
+                os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
+            else:
+                collapsed = 0
         else:
-            collapsed = 0  # 分析完成，未倒塌
-        if result[0] == 2:
-            s = '倒塌'if collapsed else '未倒塌'
-            message = ('g', f'{gm_name}计算不收敛({s})\n')
-            queue.put(message)
-        elif result[0] == 3:
-            message = ('h', f'{gm_name}计算超过最大计算时间\n')
-            queue.put(message)
-    if not os.path.exists(Output_dir / f'{gm_name}'):
-        os.makedirs(Output_dir / f'{gm_name}')
-    Sa = None
-    if method == 'd':
-        Sa = th_para  # 指定PGA
-    elif method == 'i':
-        Sa = th_para[1]  # 指定Sa(Ta)
-    elif method == 'j':
-        Sa = th_para[2]  # 指定Sa,avg
-    if Sa:
-        np.savetxt(Output_dir / gm_name / 'Sa.dat', np.array([Sa]))
-    with open(Output_dir/ gm_name / 'isCollapsed.dat', 'w') as f:
-        f.write(str(collapsed))
-    if script == 'tcl':
-        os.remove(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl')    
-    time_gm_end = time.time()
-    time_cost = time_gm_end - time_gm_start
-    s = '倒塌'if collapsed else '未倒塌'
-    message = ('b', f'{gm_name}完成_{s}\n')
-    queue.put(message)
+            module = import_module(f'models.{model_name}')
+            run_openseespy = getattr(module, 'run_openseespy')
+            # maxRunTime
+            EQorPO = 'EQ'
+            ShowAnimation = False
+            MPCO = False
+            MainFolder = Output_dir
+            GMname = gm_name
+            SubFolder = f'{gm_name}'
+            GMdt = dt
+            GMpoints = NPTS
+            GMduration = duration
+            FVduration = fv_duration
+            EqSF = SF
+            GMFile = dir_gm / f'{gm_name}{suffix}'
+            maxRoofDrift = 0.1
+            paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                    GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
+            with HiddenPrints(not print_result):
+                result = run_openseespy(*paras)  # 运行分析
+            if result[2]:
+                collapsed = 1  # 分析完成，倒塌
+            else:
+                collapsed = 0  # 分析完成，未倒塌
+            if result[0] == 2:
+                s = '倒塌'if collapsed else '未倒塌'
+                message = ('g', f'{gm_name}计算不收敛({s})\n')
+                queue.put(message)
+            elif result[0] == 3:
+                message = ('h', f'{gm_name}计算超过最大计算时间\n')
+                queue.put(message)
+        if not os.path.exists(Output_dir / f'{gm_name}'):
+            os.makedirs(Output_dir / f'{gm_name}')
+        Sa = None
+        if method == 'd':
+            Sa = th_para  # 指定PGA
+        elif method == 'i':
+            Sa = th_para[1]  # 指定Sa(Ta)
+        elif method == 'j':
+            Sa = th_para[2]  # 指定Sa,avg
+        if Sa:
+            np.savetxt(Output_dir / gm_name / 'Sa.dat', np.array([Sa]))
+        with open(Output_dir/ gm_name / 'isCollapsed.dat', 'w') as f:
+            f.write(str(collapsed))
+        if script == 'tcl':
+            os.remove(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl')    
+        time_gm_end = time.time()
+        time_cost = time_gm_end - time_gm_start
+        s = '倒塌'if collapsed else '未倒塌'
+        message = ('b', f'{gm_name}完成_{s}\n')
+        queue.put(message)
+    except Exception as e:
+        queue.put(('i', e))
 
 
 class HiddenPrints:

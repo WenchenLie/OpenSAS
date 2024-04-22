@@ -30,18 +30,19 @@ OS模型中的单位：N, mm, t
 
 def run():
 
-    notes = """6层3跨钢筋混凝土框架-无填充墙，按有填充墙设计，设计时考虑周期折减系数0.7，分析时删去墙部分的质量
+    note1 = """6层3跨钢筋混凝土框架-无填充墙，按有填充墙设计，设计时考虑周期折减系数0.7，分析时删去墙部分的质量
     """  # 模型说明
-    model = MRF('MRF4S_AS', N=4, notes=notes, script='tcl')
+    note2 = ''
+    model = MRF('MRF4S_AS', N=4, notes=note2, script='tcl')
     # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
     model.select_ground_motions([f'GM{i}_AS' for i in range(1, 12)], suffix='.txt')
     # model.select_ground_motions(['th2'], suffix='.th')
     T1 = 1.242
-    model.scale_ground_motions('data/DBE_AS.txt', method='e', para=None, plot=True, SF_code=1)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir='H:/MRF_results/test/MRF4S_AS', fv_duration=0, display=True, auto_quit=False)
-    # model.run_time_history(print_result=True, parallel=0)
+    model.scale_ground_motions('data/DBE_AS.txt', method='e', para=None, plot=False, SF_code=1.5)  # 只有跑时程需要定义
+    model.set_running_parameters(Output_dir='H:/MRF_results/MRF4S_AS_MCEth', fv_duration=30, display=False, auto_quit=False)
+    model.run_time_history(print_result=False, parallel=11)
     # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=0, print_result=False)
-    model.run_pushover(0.1, print_result=True)
+    # model.run_pushover(0.1, print_result=True)
     # QuakeReadPushover('H:/RCF_results/test/STKO_6SRCF')
 
 
