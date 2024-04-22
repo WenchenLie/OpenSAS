@@ -1,6 +1,6 @@
 from __future__ import annotations
 import multiprocessing.queues
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from .MRF import MRF
 import os
@@ -29,7 +29,11 @@ from ui.Win_running import Ui_Win_running
 
 class MyWin(QDialog):
 
-    def __init__(self, main: MRF, running_case: str, IDA_para: tuple, print_result: bool):
+    def __init__(
+            self, main: MRF,
+            running_case: Literal['IDA', 'th', 'pushover'],
+            IDA_para: tuple,
+            print_result: bool):
         """IDA分析
 
         Args:
@@ -335,9 +339,10 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(self.main.maxRoofDrift) + r'\g<2>', text)
-        pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
-        self.find_pattern(pattern, text)
-        text = pattern.sub(r'\g<1>' + str(self.main.collapse_limit) + r'\g<2>', text)
+        if self.mainWin.running_case in ['IDA', 'th']:
+            pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
+            self.find_pattern(pattern, text)
+            text = pattern.sub(r'\g<1>' + str(self.main.collapse_limit) + r'\g<2>', text)
         with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 

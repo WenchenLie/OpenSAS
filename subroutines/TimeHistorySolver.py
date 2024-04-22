@@ -137,9 +137,9 @@ def SDR_tester(story_heights: list, ctrl_nodes: list,
         SDR = (disp_t - disp_b) / h
         SDRs.append(SDR)
         if SDR >= MaxAnalysisDrift:
-            collapse = (True, True)
+            collapse = (True, True)  # TODO
         if SDR >= CollapseDrift:
-            collapse = (True, False)
+            collapse = (True, False)  # TODO 这两个if应调换
     return *(collapse), SDRs, SDR_roof
 
 
