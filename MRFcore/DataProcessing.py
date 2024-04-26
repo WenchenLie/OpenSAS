@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import shutil
 import numpy as np
 import matplotlib.pyplot as plt
@@ -48,7 +49,7 @@ class DataProcessing:
         list_ = ['ground_motions', 'N', 'running_case']
         for file in list_:
             if not Path.exists(self.root/f'{file}.dat'):
-                raise ValueError(f'【Error】未找到{file}.dat')
+                raise ValueError(f'【Error】未找到{self.root}\\{file}.dat')
         self.GM_names = np.loadtxt(self.root/'ground_motions.dat', dtype=str, ndmin=1).tolist()  # 地震动名
         self.GM_N = len(self.GM_names)
         self.N = int(np.loadtxt(self.root/'N.dat'))  # 楼层数
@@ -347,12 +348,8 @@ class DataProcessing:
     @staticmethod
     def _get_gm(path_: str | Path, gm_name, suffix='.txt') -> tuple[np.ndarray, float]:
         path_ = Path(path_)
-        gm_info = np.loadtxt(path_/f'GM_info.txt', dtype=str)
-        dt_dict = dict()
-        for i in range(len(gm_info)):
-            name = gm_info[i, 0]
-            dt = float(gm_info[i, 1])
-            dt_dict[name] = dt
+        with open(path_/'GM_info.json', 'r') as f:
+            dt_dict = json.loads(f.read())
         dt = dt_dict[gm_name]
         th = np.loadtxt(f'{path_}/{gm_name}{suffix}')
         # t = np.arange(0, len(th) * dt, dt)

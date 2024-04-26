@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import re
+import json
 from pathlib import Path
 from math import pi
 from typing import Literal, Tuple
@@ -124,12 +125,8 @@ class MRF:
         """
         self.suffix = suffix
         self.GM_names = GMs
-        GM_info = np.loadtxt(self.dir_gm / 'GM_info.txt', dtype=str)
-        dt_dict = dict()
-        for i in range(len(GM_info)):
-            name = GM_info[i, 0]
-            dt = float(GM_info[i, 1])
-            dt_dict[name] = dt
+        with open(self.dir_gm / 'GM_info.json', 'r') as f:
+            dt_dict = json.loads(f.read())
         for name in self.GM_names:
             self.GM_dts.append(dt_dict[name])
             th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
