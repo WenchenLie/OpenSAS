@@ -35,10 +35,10 @@ def run():
     note2 = ''
     model = MRF('MRF4S_AS', N=4, notes=note2, script='tcl')
     # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-    model.select_ground_motions([f'GM{i}_AS' for i in range(1, 12)], suffix='.txt')
+    model.select_ground_motions([f'GM{i}_AS' for i in range(1, 12)], suffix='.txt', SF=1.5)
     # model.select_ground_motions(['th2'], suffix='.th')
     T1 = 1.242
-    model.scale_ground_motions('data/DBE_AS.txt', method='e', para=None, plot=False, SF_code=1.5)  # 只有跑时程需要定义
+    model.scale_ground_motions('data/DBE_AS.txt', method='e', para=None, plot=False)  # 只有跑时程需要定义
     model.set_running_parameters(Output_dir='H:/MRF_results/MRF4S_AS_MCEth', fv_duration=30, display=False, auto_quit=False)
     model.run_time_history(print_result=False, parallel=11)
     # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=0, print_result=False)
@@ -49,7 +49,7 @@ def run():
 def data_processing():
 
     time0 = time.time()
-    model = DataProcessing(r'H:/RCF_results/STKO_6SRCF_TMIW_DBE', gm_suffix='.txt')
+    model = DataProcessing(r'H:/RCF_results/STKO_6SRCF_TMIW_MCE', gm_suffix='.txt')
     model.set_output_dir(r'H:/RCF_results/STKO_6SRCF_TMIW_DBE_out', cover=1)
     model.read_results('mode', 'IDR')
     # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)

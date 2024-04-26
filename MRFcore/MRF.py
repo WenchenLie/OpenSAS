@@ -112,12 +112,13 @@ class MRF:
             self.logger.warning(f'opensees脚本文本格式版本号({v})与本程序兼容的版本({self.format_version})不对应，可能会产生未知问题！')
 
 
-    def select_ground_motions(self, GMs: list, suffix: str='.txt'):
+    def select_ground_motions(self, GMs: list, suffix: str='.txt', SF: int=1):
         """选择地震动文件
 
         Args:
             GMs (list): 一个包含所有地震动文件名(不包括后缀)的列表  
             suffix (str, optional): 地震动文件后缀，默认为.txt
+            SF (int): 地震动缩放系数，默认1（仅在读取时程文件时生效，若后续基于目标谱缩放则会被覆盖）
 
         Example:
             >>> select_ground_motions(GMs=['GM1', 'GM2'], suffix='.txt')
@@ -132,7 +133,7 @@ class MRF:
             dt_dict[name] = dt
         for name in self.GM_names:
             self.GM_dts.append(dt_dict[name])
-            th = np.loadtxt(self.dir_gm / f'{name}{suffix}')
+            th = np.loadtxt(self.dir_gm / f'{name}{suffix}') * SF
             self.GM_NPTS.append(len(th))
             self.GM_durations.append(round((len(th) - 1) * dt_dict[name], 6))
         self.GM_N = len(self.GM_names)
