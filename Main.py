@@ -35,7 +35,7 @@ def run():
     note2 = ''
     model = MRF('MRF4S_AS', N=4, notes=note2, script='tcl')
     # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-    model.select_ground_motions([f'GM{i}_AS' for i in range(1, 12)], suffix='.txt', SF=1.5)
+    model.select_ground_motions([f'GM{i}_AS' for i in range(1, 12)], suffix='.txt')
     # model.select_ground_motions(['th2'], suffix='.th')
     T1 = 1.242
     model.scale_ground_motions('data/DBE_AS.txt', method='e', para=None, plot=False)  # 只有跑时程需要定义

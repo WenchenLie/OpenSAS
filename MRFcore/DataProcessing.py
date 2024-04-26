@@ -23,7 +23,11 @@ class DataProcessing:
     g = 9810
     span = 3  # 跨数
     
-    def __init__(self, root: str | Path, max_mode: int=None, gm_file: str | Path='F:/MRF/GMs', gm_suffix='.txt'):
+    def __init__(
+            self, root: str | Path,
+            max_mode: int=None,
+            gm_file: str | Path=Path(__file__).parent.parent/'GMs',
+            gm_suffix='.txt'):
         """基于计算后的结果文件夹提取计算结果
 
         Args:
