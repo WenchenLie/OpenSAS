@@ -498,8 +498,8 @@ class MRF:
             self.display = False
         self.logger.info('开始进行时程分析')
         with open(f'{self.Output_dir}/running_case.dat', 'w') as f:
-            f.write('th')
-        self._exec_win(running_case='th', IDA_para=None, print_result=print_result)
+            f.write('TH')
+        self._exec_win(running_case='TH', IDA_para=None, print_result=print_result)
 
 
     def run_IDA(
@@ -568,8 +568,27 @@ class MRF:
             f.write('pushover')
         IDA_para = None
         with open(f'{self.Output_dir}/running_case.dat', 'w') as f:
-            f.write('pushover')
-        self._exec_win(running_case='pushover', IDA_para=IDA_para, print_result=print_result)
+            f.write('PO')
+        self._exec_win(running_case='PO', IDA_para=IDA_para, print_result=print_result)
+
+
+    def run_cyclic_pushover(self, RDR_path: list[float], print_result=False):
+        """运行cyclic pushover分析
+
+        Args:
+            RDR_path (list[float]): 屋顶位移角的加载路径
+            print_result (bool, optional): 是否打印OpenSees输出的内容，默认为False
+        """
+        if self.do_not_run:
+            return
+        self.logger.info('开始进行Cyclic pushover分析')
+        self.RDR_path = RDR_path
+        with open(f'{self.Output_dir}/ground_motions.dat', 'w') as f:
+            f.write('Cyclic pushover')
+        IDA_para = None
+        with open(f'{self.Output_dir}/running_case.dat', 'w') as f:
+            f.write('CP')
+        self._exec_win(running_case='CP', IDA_para=IDA_para, print_result=print_result)
 
 
     def _exec_win(self, running_case: str, IDA_para: tuple, print_result: bool):
@@ -589,32 +608,6 @@ class MRF:
         for i in data:
             total *= pow(i, 1 / n)
         return total
-
-
-    def _get_percentile_line(self, all_x: list[list], all_y: list[list], p: float, n: int, x0: float, x1: float) -> tuple[np.ndarray, np.ndarray]:
-        """计算IDA曲线簇的百分位线
-
-        Args:
-            all_x (list[list]): 所有独立IDA的横坐标
-            all_y (list[list]): 所有独立IDA的纵坐标
-            p (float): 百分位值
-            n (int): 输出的百分为线横坐标的点数量
-            x0 (float): 百分为线的横坐标起始范围
-            x1 (float): 百分为线的横坐标结束范围
-
-        Returns:
-            tuple[np.ndarray, np.ndarray]: 百分位线的横坐标、纵坐标
-        """
-        # 计算百分位线
-        x = np.linspace(x0, x1, n)  # 百分位线横坐标
-        y = []  # 百分位线纵坐标
-        for i, xi in enumerate(x):
-            # xi: int, yi: list
-            yi = [self._get_y(all_x[i], all_y[i], xi) for i in range(len(all_x))]
-            y_percentile = np.percentile(yi, p)
-            y.append(y_percentile)
-        y = np.array(y)
-        return x, y
 
 
     @staticmethod

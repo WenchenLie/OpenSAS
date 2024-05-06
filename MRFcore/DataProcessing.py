@@ -132,12 +132,12 @@ class DataProcessing:
         if self.skip:
             return
         if read_other:
-            if not self.running_case == 'pushover':
+            if not self.running_case in ['PO', 'CP']:
                 self._read_other(print_result)
         for result in args:
             if result == 'mode':
                 self._read_mode(print_result)
-            if self.running_case == 'pushover':
+            if self.running_case in ['PO', 'CP']:
                 break
             elif result == 'IDR':
                 self._read_IDR(print_result)
@@ -190,9 +190,11 @@ class DataProcessing:
         # self.mode的第i行j列为第i阶振型第j层位移
         if self.running_case == 'IDA':
             subFolder = f'{self.GM_names[0]}_1'
-        elif self.running_case == 'pushover':
+        elif self.running_case == 'PO':
             subFolder = 'Pushover'
-        elif self.running_case == 'th':
+        elif self.running_case == 'CP':
+            subFolder = 'Cyclic_pushover'
+        elif self.running_case == 'TH':
             subFolder = f'{self.GM_names[0]}'
         else:
             raise ValueError(f'未知的`running_case`类型：{self.running_case}')
@@ -232,7 +234,7 @@ class DataProcessing:
                     data = np.round(data, 6)
                     np.savetxt(self.root_out/subfolder/'Sa.out', np.array([data]))
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         
     def _read_IDR(self, print_result):
@@ -264,7 +266,7 @@ class DataProcessing:
                 roof_d = pd.read_csv(folder/f'Disp{self.N+1}.out', header=None).to_numpy()[11:, 0]
                 np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d)
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -307,7 +309,7 @@ class DataProcessing:
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'累积层间位移角.out', CIDR)
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
         
@@ -341,7 +343,7 @@ class DataProcessing:
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'楼层剪力(g).out', shear)
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -388,7 +390,7 @@ class DataProcessing:
                 roof_a = roof_a - roof_a_base[11:]
                 np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', roof_a)
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -445,7 +447,7 @@ class DataProcessing:
                 roof_v = roof_v - roof_v_base[11:]
                 np.savetxt(self.root_out/subfolder/'屋顶速度时程(绝对).out', roof_v)
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -492,7 +494,7 @@ class DataProcessing:
                             hinge_result[story-1, 2+(col-2)*2] = theta_r
                 np.savetxt(self.root_out/subfolder/'梁铰变形.out', hinge_result, fmt='%.6f')
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -538,7 +540,7 @@ class DataProcessing:
                             hinge_result[2*(story-2)+2, col-1] = theta_T
                 np.savetxt(self.root_out/subfolder/'柱铰变形.out', hinge_result, fmt='%.6f')
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -567,7 +569,7 @@ class DataProcessing:
                         hinge_result[story-2, col-1] = theta
                 np.savetxt(self.root_out/subfolder/'节点域变形.out', hinge_result, fmt='%.6f')
                 num += 1
-                if self.running_case == 'th':
+                if self.running_case == 'TH':
                     break
         logger.success('完成     ')
 
@@ -619,7 +621,7 @@ class DataProcessing:
             FDR_step (list, optional): 不同级别的屋顶位移角，用于计算不同屋顶位移角下结构的归一化层位移
             plot_result (bool, optional): 是否绘制曲线（默认True）
         """
-        if self.running_case != 'pushover':
+        if self.running_case != 'PO':
             logger.warning('文件夹中存放的不是pushover分析结果')
             return
         logger.info('正在读取pushover结果...')
@@ -698,8 +700,12 @@ class DataProcessing:
             plt.show()
         logger.success('完成     ')
 
+    def read_cyclic_pushover(self):
+        pass  # TODO
+
+
     def read_th(self):
-        if not self.running_case == 'th':
+        if not self.running_case == 'TH':
             logger.warning('【Error】方法read_th仅限用于时程分析工况')
             return
         if not Path(self.root_out/'结果统计').exists():

@@ -15,7 +15,7 @@
 # My             Effective Yield Moment
 # PPy            Axial load ratio due to gravity
 # SF_PPy         Scale factor of axial load ratio (due to overturning effect)
-# pinned         Column base pinned connection (1: fixed, 2: pinned)
+# type_          Column base pinned connection (1: fixed, 2: pinned, 3: elastic)
 # check          Print IMK model parameters
 # 
 # ---------------
@@ -34,7 +34,7 @@ def ColumnHinge(
     SpringID: int, NodeI: int, NodeJ: int,
     E: float, Ix: float, d: float, htw: float, ry: float,
     L: float, Lb: float, My: float, PPy: float,
-    SF_PPy: float, pinned: Literal[1, 2], check: bool=None):
+    SF_PPy: float, type_: Literal[1, 2, 3], check: bool=None):
     
     n = 10.0
     c1 = 1.0
@@ -74,15 +74,20 @@ def ColumnHinge(
     Res = 0.5 - 0.4 * PPy  # Eq. (5)
     c = 1.0
 
-    ops.uniaxialMaterial("IMKBilin", SpringID, K, theta_p, theta_pc, theta_u, My, McMy, Res, theta_p, theta_pc, theta_u, My, McMy, Res, Lamda, 0.9 * Lamda, 0.9 * Lamda, c, c, c, D, D)
-    if pinned == 1:
+    if type_ == 1:
+        ops.uniaxialMaterial("IMKBilin", SpringID, K, theta_p, theta_pc, theta_u, My, McMy, Res, theta_p, theta_pc, theta_u, My, McMy, Res, Lamda, 0.9 * Lamda, 0.9 * Lamda, c, c, c, D, D)
         ops.element("zeroLength", SpringID, NodeI, NodeJ, "-mat", 99, 99, SpringID, "-dir", 1, 2, 6)
         # ops.element("zeroLength", SpringID, NodeI, NodeJ, "-mat", SpringID, "-dir", 6)
         # ops.equalDOF(NodeI, NodeJ, 1, 2)
-    elif pinned == 2:
+    elif type_ == 2:
+        ops.uniaxialMaterial("IMKBilin", SpringID, K, theta_p, theta_pc, theta_u, My, McMy, Res, theta_p, theta_pc, theta_u, My, McMy, Res, Lamda, 0.9 * Lamda, 0.9 * Lamda, c, c, c, D, D)
         ops.element("zeroLength", SpringID, NodeI, NodeJ, "-mat", 99, 99, 9, "-dir", 1, 2, 6)
         # ops.element("zeroLength", SpringID, NodeI, NodeJ, "-mat", 9, "-dir", 6)
         # ops.equalDOF(NodeI, NodeJ, 1, 2)
+    elif type_ == 3:
+        # Elastic
+        ops.uniaxialMaterial("Elastic", SpringID, K)
+        ops.element("zeroLength", SpringID, NodeI, NodeJ, "-mat", 99, 99, SpringID, "-dir", 1, 2, 6)
     if check:
         print(f"{check}:\nKs: {K}, My: {My}, theta_p: {theta_p}, theta_pc: {theta_pc}, Res: {Res}")
 

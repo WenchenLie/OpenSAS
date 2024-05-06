@@ -20,6 +20,7 @@
 #                   1: Reduced beam section (RBS)
 #                   2: Other than RBS
 #                   3: Pinned
+#                   4: Elastic
 # check          If given, print IMK model parameters
 # 
 # ---------------
@@ -64,6 +65,10 @@ proc BeamHinge {SpringID NodeI NodeJ E fy Ix d htw bftf ry L Ls Lb My type_ {che
         element zeroLength $SpringID $NodeI $NodeJ -mat 99 99 9 -dir 1 2 6;
         # element zeroLength $SpringID $NodeI $NodeJ -mat 9 -dir 6;
         # equalDOF $NodeI $NodeJ 1 2;
+    } elseif {$type_ == 4} {
+        # Elastic beam hinge
+        uniaxialMaterial Elastic $SpringID $K;
+        element zeroLength $SpringID $NodeI $NodeJ -mat 99 99 $SpringID -dir 1 2 6;
     } else {
         # TODO Corrected rotations to account for elastic deformations
         # set theta_y [expr $My/(6 * $E * $Ix / $L)];

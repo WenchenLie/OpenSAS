@@ -15,7 +15,7 @@
 # My             Effective Yield Moment
 # PPy            Axial load ratio due to gravity
 # SF_PPy         Scale factor of axial load ratio (due to overturning effect)
-# pinned         Column base pinned connection (1: fixed, 2: pinned)
+# type_          Column base pinned connection (1: fixed, 2: pinned, 3: elastic)
 # check          Print IMK model parameters
 # 
 # ---------------
@@ -27,7 +27,7 @@
 # --------------------------------------------------------------------------------
 
 
-proc ColumnHinge {SpringID NodeI NodeJ E Ix d htw ry L Lb My PPy SF_PPy pinned {check ""}} {
+proc ColumnHinge {SpringID NodeI NodeJ E Ix d htw ry L Lb My PPy SF_PPy type_ {check ""}} {
 
     set n 10.0;
     set c1 1.0;
@@ -67,15 +67,20 @@ proc ColumnHinge {SpringID NodeI NodeJ E Ix d htw ry L Lb My PPy SF_PPy pinned {
     set Res [expr 0.5-0.4*$PPy];  # E1. (5), [1]
     set c 1.0;
 
-    uniaxialMaterial IMKBilin $SpringID $K $theta_p $theta_pc $theta_u $My $McMy $Res $theta_p $theta_pc $theta_u $My $McMy $Res $Lamda [expr 0.9*$Lamda] [expr 0.9*$Lamda] $c $c $c $D $D;
-    if {$pinned == 1} {
+    if {$type_ == 1} {
+        uniaxialMaterial IMKBilin $SpringID $K $theta_p $theta_pc $theta_u $My $McMy $Res $theta_p $theta_pc $theta_u $My $McMy $Res $Lamda [expr 0.9*$Lamda] [expr 0.9*$Lamda] $c $c $c $D $D;
         element zeroLength $SpringID $NodeI $NodeJ -mat 99 99 $SpringID -dir 1 2 6;
         # element zeroLength $SpringID $NodeI $NodeJ -mat $SpringID -dir 6;
         # equalDOF $NodeI $NodeJ 1 2;
-    } elseif {$pinned == 2} {
+    } elseif {$type_ == 2} {
+        uniaxialMaterial IMKBilin $SpringID $K $theta_p $theta_pc $theta_u $My $McMy $Res $theta_p $theta_pc $theta_u $My $McMy $Res $Lamda [expr 0.9*$Lamda] [expr 0.9*$Lamda] $c $c $c $D $D;
         element zeroLength $SpringID $NodeI $NodeJ -mat 99 99 9 -dir 1 2 6;
         # element zeroLength $SpringID $NodeI $NodeJ -mat 9 -dir 6;
         # equalDOF $NodeI $NodeJ 1 2;
+    } elseif {$type_ == 3} {
+        # Elastic
+        uniaxialMaterial Elastic $SpringID $K;
+        element zeroLength $SpringID $NodeI $NodeJ -mat 99 99 $SpringID -dir 1 2 6;
     }
     if {$check ne ""} {
         puts "$check:\nKs: $K, My: $My, theta_p: $theta_p, theta_pc: $theta_pc, Res: $Res"

@@ -31,7 +31,7 @@ class MyWin(QDialog):
 
     def __init__(
             self, main: MRF,
-            running_case: Literal['IDA', 'th', 'pushover'],
+            running_case: Literal['IDA', 'TH', 'PO', 'CP'],
             IDA_para: tuple,
             print_result: bool):
         """IDA分析
@@ -70,7 +70,7 @@ class MyWin(QDialog):
     def init_ui(self):
         self.setWindowFlags(Qt.WindowMinMaxButtonsHint)
         self.set_ui_progrsssBar(('初始化中...', 0))
-        if self.running_case == 'th':
+        if self.running_case == 'TH':
             if self.main.parallel:
                 self.ui.label_3.setText('正在运行：多进程时程分析')
             else:
@@ -87,9 +87,12 @@ class MyWin(QDialog):
                 self.ui.label_3.setText('正在运行：IDA')
             self.ui.label_20.setText('')
             self.add_log('运行工况：IDA\n')
-        elif self.running_case == 'pushover':
+        elif self.running_case == 'PO':
             self.ui.label_3.setText('正在运行：Pushover')
             self.add_log('运行工况：Pushover分析\n')
+        elif self.running_case == 'CP':
+            self.ui.label_3.setText('正在运行：Cyclic pushover')
+            self.add_log('运行工况：Cyclic pushover分析\n')
         else:
             raise ValueError('【Error】参数 running_case 错误')
         if self.main.script == 'tcl':
@@ -117,9 +120,9 @@ class MyWin(QDialog):
         self.model: str = self.main.model_name
         self.ui.label_5.setText(self.model)  # 模型名称
         self.fv_duration: float = self.main.fv_duration
-        if self.running_case in ['IDA', 'th']:
+        if self.running_case in ['IDA', 'TH']:
             self.ui.label_17.setText(f'{self.fv_duration}s')  # 自由振动时长
-        elif self.running_case == 'pushover':
+        elif self.running_case in ['PO', 'CP']:
             self.ui.label_17.setText('')
         self.ui.pushButton_2.clicked.connect(self.copy_current_script)
         self.thread_run = None
@@ -182,8 +185,11 @@ class MyWin(QDialog):
             QMessageBox.warning(self, '警告', '多进程计算不支持查看运行代码！')
             return
         if self.main.script == 'tcl':
-            if self.running_case == 'pushover':
+            if self.running_case == 'PO':
                 with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.{self.main.script}', 'r') as f:
+                    text = f.read()
+            elif self.running_case == 'CP':
+                with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_Cyclic_pushover.{self.main.script}', 'r') as f:
                     text = f.read()
             else:
                 with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{self.current_gm}.{self.main.script}', 'r') as f:
@@ -202,7 +208,7 @@ class MyWin(QDialog):
         QMessageBox.information(self, '提示', '已复制至剪切板。')
 
     def kill(self):
-        if self.running_case == 'th' and self.main.parallel > 0:
+        if self.running_case == 'TH' and self.main.parallel > 0:
             QMessageBox.warning(self, '警告', '多进程时程分析不支持中断！')
             return
         if self.thread_run:
@@ -276,18 +282,16 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRunTime )[0-9.]+(;  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(float(self.main.maxRunTime)) + r'\g<2>', text) 
-        pattern1 = re.compile(r'(set EQ )[01](;  # \$\$\$)')
-        pattern2 = re.compile(r'(set PO )[01](;  # \$\$\$)')
-        self.find_pattern(pattern1, text)
-        self.find_pattern(pattern2, text)
-        if self.mainWin.running_case in ['th', 'IDA']:
-            text = pattern1.sub(r'\g<1>' + '1' + r'\g<2>', text)
-            text = pattern2.sub(r'\g<1>' + '0' + r'\g<2>', text)
-        elif self.mainWin.running_case == 'pushover':
-            text = pattern1.sub(r'\g<1>' + '0' + r'\g<2>', text)
-            text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
+        pattern = re.compile(r'(set analysis_type ")[THPOCP]+(";  # \$\$\$)')
+        self.find_pattern(pattern, text)
+        if self.mainWin.running_case in ['TH', 'IDA']:
+            text = pattern.sub(r'\g<1>' + 'TH' + r'\g<2>', text)
+        elif self.mainWin.running_case == 'PO':
+            text = pattern.sub(r'\g<1>' + 'PO' + r'\g<2>', text)
+        elif self.mainWin.running_case == 'CP':
+            text = pattern.sub(r'\g<1>' + 'CP' + r'\g<2>', text)
         else:
-            self.main.logger.warning('无法进行正则匹配 (set  EQ )')
+            self.main.logger.warning('无法进行正则匹配 (set analysis_type)')
         pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + Output_dir.absolute().as_posix() + r'\g<2>', text)
@@ -339,10 +343,16 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
         self.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(self.main.maxRoofDrift) + r'\g<2>', text)
-        if self.mainWin.running_case in ['IDA', 'th']:
+        if self.mainWin.running_case in ['IDA', 'TH']:
             pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
             self.find_pattern(pattern, text)
             text = pattern.sub(r'\g<1>' + str(self.main.collapse_limit) + r'\g<2>', text)
+        elif self.mainWin.running_case == 'CP':
+            pattern = re.compile(r'(set RDR_path \[list )[0-9. -]+(\];  # \$\$\$)')
+            self.find_pattern(pattern, text)
+            s = [str(i) for i in self.main.RDR_path]
+            s = ' '.join(s)
+            text = pattern.sub(r'\g<1>' + s + r'\g<2>', text)
         with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
@@ -376,10 +386,10 @@ class WorkerThread(QThread):
         pattern2 = re.compile(r'(set PO )[01](;  # \$\$\$)')
         WorkerThread.find_pattern(pattern1, text)
         WorkerThread.find_pattern(pattern2, text)
-        if running_case in ['th', 'IDA']:
+        if running_case in ['TH', 'IDA']:
             text = pattern1.sub(r'\g<1>' + '1' + r'\g<2>', text)
             text = pattern2.sub(r'\g<1>' + '0' + r'\g<2>', text)
-        elif running_case == 'pushover':
+        elif running_case == 'PO':
             text = pattern1.sub(r'\g<1>' + '0' + r'\g<2>', text)
             text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
         pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
@@ -433,7 +443,7 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRoofDrift )[01.]+(;  # \$\$\$)')
         WorkerThread.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(maxRoofDrift) + r'\g<2>', text)
-        if running_case in ['IDA', 'th']:
+        if running_case in ['IDA', 'TH']:
             pattern = re.compile(r'(set CollapseDrift )[0-9.]+(;  # \$\$\$)')
             WorkerThread.find_pattern(pattern, text)
             text = pattern.sub(r'\g<1>' + str(collapse_limit) + r'\g<2>', text)
@@ -455,9 +465,9 @@ class WorkerThread(QThread):
 
 
     def run(self):
-        if self.mainWin.running_case == 'th' and not self.main.parallel:
+        if self.mainWin.running_case == 'TH' and not self.main.parallel:
             self.run_th()
-        elif self.mainWin.running_case == 'th' and self.main.parallel:
+        elif self.mainWin.running_case == 'TH' and self.main.parallel:
             self.run_th_parallel(self.main.parallel)
         elif self.mainWin.running_case == 'IDA' and not self.main.parallel:
             self.run_IDA()
@@ -466,8 +476,10 @@ class WorkerThread(QThread):
                 self.run_IDA_parallel_py(self.main.parallel)
             else:
                 self.run_IDA_parallel_tcl(self.main.parallel)
-        elif self.mainWin.running_case == 'pushover':
+        elif self.mainWin.running_case == 'PO':
             self.run_pushover()
+        elif self.mainWin.running_case == 'CP':
+            self.run_cyclic_pushover()
 
 
     def get_queue(self, queue: multiprocessing.Queue):
@@ -544,7 +556,7 @@ class WorkerThread(QThread):
                 module = import_module(f'models.{self.main.model_name}')
                 run_openseespy = getattr(module, 'run_openseespy')
                 maxRunTime = self.main.maxRunTime
-                EQorPO = 'EQ'
+                analysis_type = 'TH'
                 if self.main.display:
                     ShowAnimation = True
                 else:
@@ -564,8 +576,8 @@ class WorkerThread(QThread):
                 GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
                 maxRoofDrift = 0.1
                 collapse_limit = self.main.collapse_limit
-                paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                         GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
+                paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                         GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit, None]
                 self.signal_send_openseespy_paras.emit(paras)
                 result = run_openseespy(*paras)
                 if result[2]:
@@ -715,7 +727,7 @@ class WorkerThread(QThread):
                     module = import_module(f'models.{self.main.model_name}')
                     run_openseespy = getattr(module, 'run_openseespy')
                     maxRunTime = self.main.maxRunTime
-                    EQorPO = 'EQ'
+                    analysis_type = 'TH'
                     if self.main.display:
                         ShowAnimation = True
                     else:
@@ -736,8 +748,8 @@ class WorkerThread(QThread):
                     maxRoofDrift = 0.1
                     collapse_limit = self.main.collapse_limit
                     print_result = self.mainWin.print_result
-                    paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
+                    paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                            GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit, None]
                     self.signal_send_openseespy_paras.emit(paras)
                     with HiddenPrints(not print_result):
                         result = run_openseespy(*paras)
@@ -918,7 +930,7 @@ class WorkerThread(QThread):
             module = import_module(f'models.{self.main.model_name}')
             run_openseespy = getattr(module, 'run_openseespy')
             maxRunTime = self.main.maxRunTime
-            EQorPO = 'PO'
+            analysis_type = 'PO'
             if self.main.display:
                 ShowAnimation = True
             else:
@@ -937,8 +949,8 @@ class WorkerThread(QThread):
             EqSF = SF
             GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
             maxRoofDrift = self.main.maxRoofDrift
-            paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                        GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift]
+            paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                        GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, None]
             self.signal_send_openseespy_paras.emit(paras)
             result = run_openseespy(*paras)
             if result[0] == 2:
@@ -956,6 +968,70 @@ class WorkerThread(QThread):
         self.signal_finished.emit(1)
         if self.main.script == 'tcl':
             os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_Pushover.tcl')
+
+    def run_cyclic_pushover(self):
+        self.main.logger.info(f'正在Cyclic pushover分析')
+        self.signal_set_progressBar.emit(('正在进行Cyclic pushover分析...', 0))
+        gm_name = 'Cyclic_pushover'
+        dt = '0'
+        NPTS = '0'
+        duration = '0'
+        fv_duration = 0
+        SF = 1
+        self.signal_set_ui.emit((gm_name, '（仅IDA适用）', duration, dt, NPTS))
+        time_gm_start = time.time()
+        self.signal_add_log.emit(f'开始：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_start))}\n')
+        if self.main.script == 'tcl':
+            self.modify_script1(self.main.Output_dir, gm_name, dt, NPTS, duration, fv_duration, SF)
+            cmd = f'"{self.OS_path}" "{self.main.dir_temp}/temp_running_{self.main.model_name}_{gm_name}.tcl"'
+            # 运行分析
+            if self.mainWin.print_result:
+                subprocess.call(cmd)
+            else:
+                subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            module = import_module(f'models.{self.main.model_name}')
+            run_openseespy = getattr(module, 'run_openseespy')
+            maxRunTime = self.main.maxRunTime
+            analysis_type = 'CP'
+            if self.main.display:
+                ShowAnimation = True
+            else:
+                ShowAnimation = False
+            if self.main.mpco:
+                MPCO = True
+            else:
+                MPCO = False
+            MainFolder = self.main.Output_dir
+            GMname = gm_name
+            SubFolder = gm_name
+            GMdt = dt
+            GMpoints = NPTS
+            GMduration = duration
+            FVduration = fv_duration
+            EqSF = SF
+            GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
+            maxRoofDrift = self.main.maxRoofDrift
+            RDR_path = self.main.RDR_path
+            paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                        GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, None, RDR_path]
+            self.signal_send_openseespy_paras.emit(paras)
+            result = run_openseespy(*paras)
+            if result == 2:
+                self.signal_add_warning.emit(f'{gm_name}分析不收敛')
+            elif result == 3:
+                self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
+        if not os.path.exists(self.main.Output_dir / gm_name):
+            os.makedirs(self.main.Output_dir / gm_name)
+        with open(self.main.Output_dir / gm_name / 'isCollapsed.dat', 'w') as f:
+            f.write('2')            
+        time_gm_end = time.time()
+        elapsed_time = time_gm_end - time_gm_start
+        self.signal_add_log.emit(f'结束：{time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(time_gm_end))}\n')
+        self.signal_add_log.emit(f'耗时：{round(elapsed_time, 2)}s\n\n')
+        self.signal_finished.emit(1)
+        if self.main.script == 'tcl':
+            os.remove(self.main.dir_temp / f'temp_running_{self.main.model_name}_Cyclic_pushover.tcl')
 
 
     @staticmethod
@@ -1025,7 +1101,7 @@ def run_single_IDA_py(
     max_ana: int,
     trace_collapse: bool,
     print_result: bool,
-    collapse_limit: float
+    collapse_limit: float,
 ):
     """
     计算单条地震动的IDA分析(基于openseespy)，
@@ -1067,7 +1143,7 @@ def run_single_IDA_py(
             queue.put(message)
             time_gm_start = time.time()
             # maxRunTime
-            EQorPO = 'EQ'
+            analysis_type = 'TH'
             ShowAnimation = False
             MPCO = False
             # MainFolder
@@ -1080,8 +1156,8 @@ def run_single_IDA_py(
             EqSF = SF
             GMFile = dir_gm / f'{gm_name}{suffix}'
             maxRoofDrift = 0.1
-            paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                    GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
+            paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                    GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit, None]
             with HiddenPrints(not print_result):
                 result = run_openseespy(*paras)  # 运行分析
             if result[2]:
@@ -1177,7 +1253,7 @@ def run_single_IDA_tcl(
     trace_collapse: bool,
     OS_path: str,
     print_result: bool,
-    collapse_limit: float
+    collapse_limit: float,
 ):
     """
     计算单条地震动的IDA分析(基于tcl)，
@@ -1314,7 +1390,7 @@ def run_single_th(
     th_para,
     OS_path: str,
     print_result: bool,
-    collapse_limit: float
+    collapse_limit: float,
 ):
     """
     计算单条地震动的IDA分析(基于tcl)，
@@ -1337,7 +1413,7 @@ def run_single_th(
         time_gm_start = time.time()
         maxRoofDrift = 0.1
         display = False
-        running_case = 'th'
+        running_case = 'TH'
         if script == 'tcl':
             WorkerThread.modify_script(
                 dir_model, model_name, maxRunTime, running_case,
@@ -1357,7 +1433,7 @@ def run_single_th(
             module = import_module(f'models.{model_name}')
             run_openseespy = getattr(module, 'run_openseespy')
             # maxRunTime
-            EQorPO = 'EQ'
+            analysis_type = 'TH'
             ShowAnimation = False
             MPCO = False
             MainFolder = Output_dir
@@ -1370,8 +1446,8 @@ def run_single_th(
             EqSF = SF
             GMFile = dir_gm / f'{gm_name}{suffix}'
             maxRoofDrift = 0.1
-            paras = [maxRunTime, EQorPO, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                    GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit]
+            paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
+                    GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, collapse_limit, None]
             with HiddenPrints(not print_result):
                 result = run_openseespy(*paras)  # 运行分析
             if result[2]:
