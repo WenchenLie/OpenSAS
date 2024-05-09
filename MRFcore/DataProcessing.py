@@ -260,11 +260,13 @@ class DataProcessing:
                     data_res = data[-1]
                     IDR[story] = data_max
                     IDR_res[story] = data_res
+                IDR_roof = np.array([max(abs(np.loadtxt(folder / f'SDR_Roof.out')))])
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层间位移角.out', IDR)
                 np.savetxt(self.root_out/subfolder/'残余层间位移角.out', IDR_res)
+                np.savetxt(self.root_out/subfolder/'屋顶层间位移角.out', IDR_roof)
                 roof_d = pd.read_csv(folder/f'Disp{self.N+1}.out', header=None).to_numpy()[11:, 0]
-                np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d)
+                np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d, fmt='%.4f')
                 num += 1
                 if self.running_case == 'TH':
                     break
@@ -712,6 +714,8 @@ class DataProcessing:
             Path.mkdir(self.root_out/'结果统计')
         IDR = np.zeros((self.N + 1, self.GM_N))  # 最大层间位移角
         IDR_stat = np.zeros((self.N + 1, 5))  # 均值，标准差，16,50,84分位数
+        IDRroof = np.zeros(self.GM_N)  # 屋顶层间位移角
+        IDRroof_stat = np.zeros(5)  # 均值，标准差，16,50,84分位数
         Shear = np.zeros((self.N, self.GM_N))  # 最大楼层剪力
         Shear_stat = np.zeros((self.N, 5))  # 均值，标准差，16,50,84分位数
         CIDR = np.zeros((self.N + 1, self.GM_N))  # 累积层间位移角
@@ -741,6 +745,8 @@ class DataProcessing:
                 logger.warning(f'{gm_name}发生倒塌！')
             # 最大层间位移角
             IDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层间位移角.out', IDR[:, idx_gm])
+            # 屋顶位移角
+            IDRroof[idx_gm] = MyLoadtxt(self.root_out/gm_name/'屋顶层间位移角.out', IDRroof[idx_gm])
             # 最大楼层剪力
             Shear[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'楼层剪力(g).out', Shear[:, idx_gm])
             # 累积层间位移角
@@ -763,6 +769,11 @@ class DataProcessing:
         IDR_stat[:, 2] = np.percentile(IDR, 16, axis=1)
         IDR_stat[:, 3] = np.percentile(IDR, 50, axis=1)
         IDR_stat[:, 4] = np.percentile(IDR, 84, axis=1)
+        IDRroof_stat[0] = np.mean(IDRroof)
+        IDRroof_stat[1] = np.std(IDRroof)
+        IDRroof_stat[2] = np.percentile(IDRroof, 16)
+        IDRroof_stat[3] = np.percentile(IDRroof, 50)
+        IDRroof_stat[4] = np.percentile(IDRroof, 84)
         Shear_stat[:, 0] = np.mean(Shear, axis=1)
         Shear_stat[:, 1] = np.std(Shear, axis=1)
         Shear_stat[:, 2] = np.percentile(Shear, 16, axis=1)
@@ -806,6 +817,7 @@ class DataProcessing:
         # 保存结果
         columns = ['均值', '标准差', '16th', '50th', '84th']
         IDR = pd.DataFrame(IDR, index=range(0, self.N + 1), columns=self.GM_names)
+        IDRroof = pd.DataFrame([IDRroof], columns=self.GM_names)
         Shear = pd.DataFrame(Shear, index=range(1, self.N + 1), columns=self.GM_names)
         CIDR = pd.DataFrame(CIDR, index=range(0, self.N + 1), columns=self.GM_names)
         PFV = pd.DataFrame(PFV, index=range(1, self.N + 1), columns=self.GM_names)
@@ -836,6 +848,7 @@ class DataProcessing:
         panel_zone_stat_50th = pd.DataFrame(panel_zone_stat[3], index=index_panel, columns=range(1, self.span + 2))
         panel_zone_stat_84th = pd.DataFrame(panel_zone_stat[4], index=index_panel, columns=range(1, self.span + 2))
         IDR.to_csv(self.root_out/'结果统计'/'层间位移角.csv', encoding='ANSI', float_format='%.6f')
+        IDRroof.to_csv(self.root_out/'结果统计'/'屋顶层间位移角.csv', encoding='ANSI', float_format='%.6f')
         Shear.to_csv(self.root_out/'结果统计'/'楼层剪力(g).csv', encoding='ANSI', float_format='%.2f')
         CIDR.to_csv(self.root_out/'结果统计'/'累积层间位移角.csv', encoding='ANSI', float_format='%.6f')
         PFV.to_csv(self.root_out/'结果统计'/'层速度(mm_s).csv', encoding='ANSI', float_format='%.2f')
@@ -867,14 +880,14 @@ class DataProcessing:
 if __name__ == "__main__":
     
     time0 = time.time()
-    model = DataProcessing(r'H:/MRF_results/test/4SMRF_AE_parralle_py', gm_suffix='.th')
-    model.set_output_dir(r'H:/MRF_results/test/4SMRF_AE_parralle_py_out_test', cover=1)
+    model = DataProcessing(r'H:\RCF_results\STKO_6SRCF_TMIW_MCE', gm_suffix='.th')
+    model.set_output_dir(r'H:\RCF_results\STKO_6SRCF_TMIW_MCE_out_test', cover=1)
     model.read_results('mode', 'IDR')
     # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     # l1 = pow(6100**2 + 4300**2, 0.5)  # 首层斜撑长度
     # l2 = pow(6100**2 + 4000**2, 0.5)  # 其他层斜撑长度
     # model.read_pushover(H=16300, plot_result=True)
-    # model.read_th()  # 只有时程分析工况需要用
+    model.read_th()  # 只有时程分析工况需要用
     time1 = time.time()
     print('耗时', time1 - time0)
 
