@@ -343,7 +343,7 @@ class DataProcessing:
                     shear_story = max(abs(shear_story))
                     shear[story - 1] = shear_story
                 self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'楼层剪力(g).out', shear)
+                np.savetxt(self.root_out/subfolder/'楼层剪力(kN).out', shear)
                 num += 1
                 if self.running_case == 'TH':
                     break
@@ -748,7 +748,7 @@ class DataProcessing:
             # 屋顶位移角
             IDRroof[idx_gm] = MyLoadtxt(self.root_out/gm_name/'屋顶层间位移角.out', IDRroof[idx_gm])
             # 最大楼层剪力
-            Shear[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'楼层剪力(g).out', Shear[:, idx_gm])
+            Shear[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'楼层剪力(kN).out', Shear[:, idx_gm])
             # 累积层间位移角
             CIDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'累积层间位移角.out', CIDR[:, idx_gm])
             # 层速度
@@ -850,7 +850,7 @@ class DataProcessing:
         panel_zone_stat_84th = pd.DataFrame(panel_zone_stat[4], index=index_panel, columns=range(1, self.span + 2))
         IDR.to_csv(self.root_out/'结果统计'/'层间位移角.csv', encoding='ANSI', float_format='%.6f')
         IDRroof.to_csv(self.root_out/'结果统计'/'屋顶层间位移角.csv', encoding='ANSI', float_format='%.6f')
-        Shear.to_csv(self.root_out/'结果统计'/'楼层剪力(g).csv', encoding='ANSI', float_format='%.2f')
+        Shear.to_csv(self.root_out/'结果统计'/'楼层剪力(kN).csv', encoding='ANSI', float_format='%.2f')
         CIDR.to_csv(self.root_out/'结果统计'/'累积层间位移角.csv', encoding='ANSI', float_format='%.6f')
         PFV.to_csv(self.root_out/'结果统计'/'层速度(mm_s).csv', encoding='ANSI', float_format='%.2f')
         PFA.to_csv(self.root_out/'结果统计'/'层加速度(g).csv', encoding='ANSI', float_format='%.4f')

@@ -33,14 +33,14 @@ def run():
     note1 = """6层3跨钢筋混凝土框架-无填充墙，按有填充墙设计，设计时考虑周期折减系数0.7，分析时删去墙部分的质量
     """  # 模型说明
     note2 = ''
-    model = MRF('MRF4S_AS', N=4, notes=note2, script='py')
+    model = MRF('STKO_6SRCF_DMIWRSRD', N=6, notes=note2, script='tcl')
     # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-    model.select_ground_motions([f'GM{i}_AS' for i in range(1, 4)], suffix='.txt')
+    model.select_ground_motions([f'GM{i}' for i in range(1, 12)], suffix='.txt')
     # model.select_ground_motions(['th2'], suffix='.th')
-    T1 = 1.242
-    model.scale_ground_motions('data/DBE_AS.txt', method='e', para=None, plot=False)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir='H:/MRF_results/test/MRF4S_AS_MCEth', fv_duration=30, display=True, auto_quit=False)
-    model.run_time_history(print_result=False, parallel=3)
+    T1 = 1.268
+    model.scale_ground_motions('data/RCF6S_DBE.txt', method='a', para=None, plot=True, SF_code=1)  # 只有跑时程需要定义
+    model.set_running_parameters(Output_dir=r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_DBE', fv_duration=0, display=False, auto_quit=False)
+    model.run_time_history(print_result=False, parallel=11)
     # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=0, print_result=False)
     # model.run_pushover(0.1, print_result=True)
     # model.run_cyclic_pushover([0, 0.02, -0.02, 0], print_result=True)
@@ -50,11 +50,11 @@ def run():
 def data_processing():
 
     time0 = time.time()
-    model = DataProcessing(r'H:/MRF_results/test/MRF4S_AS_MCEth', gm_suffix='.txt')
-    model.set_output_dir(r'H:/MRF_results/test/MRF4S_AS_MCEth_out', cover=1)
+    model = DataProcessing(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_DBE', gm_suffix='.txt')
+    model.set_output_dir(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_DBE_out', cover=1)
     model.read_results('mode', 'IDR')
-    model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
-    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', print_result=True)
+    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
+    model.read_results('CIDR', 'PFA', 'PFV', 'shear', print_result=True)
     # model.read_pushover(H=24300, plot_result=True)
     model.read_th()  # 只有时程分析工况需要用
     time1 = time.time()
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     run()
     # QuakeReadPushover('H:/RCF_results/6SRCFnoWall_pushover')
     # QuakePlotHinge(r'H:\RCF_results\6SRCFnoWall_pushover\Pushover', 'c', floor=2, axis=1, position='B')
-    # data_processing()
+    data_processing()
     # fragility_analysis()
 
     pass

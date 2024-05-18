@@ -87,7 +87,8 @@ set story_heights [list 4300 4000 4000 4000 4000 4000];
 set MF_FloorNodes [list 62 31 26 6 49 75];
 set base_nodes [list 60 72 69 71]
 # Columns or walls tag
-set shear_ele(1) [list 177 213 201 206]
+# set shear_ele(1) [list 177 213 201 206]
+set shear_ele(1) [list 177 213 201 206 1001 2001 3001 4001]
 set shear_ele(2) [list 171 180 121 186]
 set shear_ele(3) [list 98 90 42 35]
 set shear_ele(4) [list 67 68 17 25]
@@ -96,17 +97,20 @@ set shear_ele(6) [list 157 178 138 146]
 # Story masses
 set story_mass [list 82.16 87.258 87.258 89.538 89.538 90.618]
 # RSRD material
-uniaxialMaterial SteelMPF 1000 28.e6 28.e6 4100.e6 0.017 0.017 20.0 0.83 0.15 0.089 1 0.089 1;
+# uniaxialMaterial SteelMPF 1000 28.e6 28.e6 4100.e6 0.017 0.017 20.0 0.83 0.15 0.089 1 0.089 1;
+uniaxialMaterial UVCuniaxial 999 3409.21 8.73 12.25 1.09 0 1 2 359.02 812.36 598.9 143.37;
+uniaxialMaterial Parallel 1000 999 -factors 1e6;
 uniaxialMaterial MinMax 1001 1000 -min -0.1 -max 0.1;
 uniaxialMaterial Elastic 99999 1.e13;
-# Fuse link
-set I_link 82830053.0;
-set A_link 4187.0;
+# Fuse link (W16x67)
+set I_link 397084780.0;
+set A_link 12645.136;
 set E 206000.0;
-node 1011 0.0     400.0; node 1012 0.0     400.0; node 1013 0.0     3900.0; node 1014 0.0     3900.0;
-node 1021 6000.0  400.0; node 1022 6000.0  400.0; node 1023 6000.0  3900.0; node 1024 6000.0  3900.0;
-node 1031 9000.0  400.0; node 1032 9000.0  400.0; node 1033 9000.0  3900.0; node 1034 9000.0  3900.0;
-node 1041 15000.0 400.0; node 1042 15000.0 400.0; node 1043 15000.0 3900.0; node 1044 15000.0 3900.0;
+set d 1000.0;  # distance from RSRD pin to floor line
+node 1011 0.0     $d; node 1012 0.0     $d; node 1013 0.0     [expr 4300.0 - $d]; node 1014 0.0     [expr 4300.0 - $d];  # Axis 1
+node 1021 6000.0  $d; node 1022 6000.0  $d; node 1023 6000.0  [expr 4300.0 - $d]; node 1024 6000.0  [expr 4300.0 - $d];  # Axis 2
+node 1031 9000.0  $d; node 1032 9000.0  $d; node 1033 9000.0  [expr 4300.0 - $d]; node 1034 9000.0  [expr 4300.0 - $d];  # Axis 3
+node 1041 15000.0 $d; node 1042 15000.0 $d; node 1043 15000.0 [expr 4300.0 - $d]; node 1044 15000.0 [expr 4300.0 - $d];  # Axis 4
 geomTransf PDelta 1000
 # Axis 1
 element elasticBeamColumn 1001 60 1011 $A_link $E $I_link 1000;
@@ -324,5 +328,5 @@ if {$PO == 1} {
     puts "Roof drift ratio: [expr $roofDisp / $HBuilding]";
 
 }
-
+set CollapseDrift 0.1;  # $$$
 wipe all;
