@@ -38,8 +38,8 @@ def run():
     model.select_ground_motions([f'GM{i}' for i in range(1, 12)], suffix='.txt')
     # model.select_ground_motions(['th2'], suffix='.th')
     T1 = 1.268
-    model.scale_ground_motions('data/RCF6S_DBE.txt', method='a', para=None, plot=True, SF_code=1)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir=r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_DBE', fv_duration=0, display=False, auto_quit=False)
+    model.scale_ground_motions('data/RCF6S_DBE.txt', method='a', para=None, plot=True, SF_code=2)  # 只有跑时程需要定义
+    model.set_running_parameters(Output_dir=r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_MCE', fv_duration=0, display=False, auto_quit=False)
     model.run_time_history(print_result=False, parallel=11)
     # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=0, print_result=False)
     # model.run_pushover(0.1, print_result=True)
@@ -50,8 +50,8 @@ def run():
 def data_processing():
 
     time0 = time.time()
-    model = DataProcessing(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_DBE', gm_suffix='.txt')
-    model.set_output_dir(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_DBE_out', cover=1)
+    model = DataProcessing(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_MCE', gm_suffix='.txt')
+    model.set_output_dir(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_MCE_out', cover=1)
     model.read_results('mode', 'IDR')
     # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     model.read_results('CIDR', 'PFA', 'PFV', 'shear', print_result=True)

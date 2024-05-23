@@ -99,7 +99,7 @@ set story_mass [list 82.16 87.258 87.258 89.538 89.538 90.618]
 # RSRD material
 # uniaxialMaterial SteelMPF 1000 28.e6 28.e6 4100.e6 0.017 0.017 20.0 0.83 0.15 0.089 1 0.089 1;
 uniaxialMaterial UVCuniaxial 999 3409.21 8.73 12.25 1.09 0 1 2 359.02 812.36 598.9 143.37;
-uniaxialMaterial Parallel 1000 999 -factors 1e6;
+uniaxialMaterial Parallel 1000 999 -factors 4e6;
 uniaxialMaterial MinMax 1001 1000 -min -0.1 -max 0.1;
 uniaxialMaterial Elastic 99999 1.e13;
 # Fuse link (W16x67)
