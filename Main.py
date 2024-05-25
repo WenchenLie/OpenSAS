@@ -80,7 +80,7 @@ def fragility_analysis():
 
 if __name__ == "__main__":
 
-    run()
+    # run()
     # QuakeReadPushover('H:/RCF_results/6SRCFnoWall_pushover')
     # QuakePlotHinge(r'H:\RCF_results\6SRCFnoWall_pushover\Pushover', 'c', floor=2, axis=1, position='B')
     data_processing()
