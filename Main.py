@@ -1,6 +1,8 @@
+import numpy as np
 import time
 from MRFcore.MRF import MRF
 from MRFcore.QuakeReadPushover import QuakeReadPushover
+from MRFcore.QuakeReadCyclicPushover import QuakeReadCyclicPushover
 from MRFcore.QuakePlotHinge import QuakePlotHinge
 from MRFcore.DataProcessing import DataProcessing
 from MRFcore.FragilityAnalysis import FragilityAnalysis
@@ -33,30 +35,33 @@ def run():
     note1 = """6层3跨钢筋混凝土框架-无填充墙，按有填充墙设计，设计时考虑周期折减系数0.7，分析时删去墙部分的质量
     """  # 模型说明
     note2 = ''
-    model = MRF('STKO_6SRCF_DMIWRSRD', N=6, notes=note2, script='tcl')
+    model = MRF('MRF4S_AS', N=4, notes=note2, script='tcl')
     # model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
-    model.select_ground_motions([f'GM{i}' for i in range(1, 12)], suffix='.txt')
+    # model.select_ground_motions([f'GM{i}' for i in range(1, 12)], suffix='.txt')
     # model.select_ground_motions(['th2'], suffix='.th')
-    T1 = 1.268
-    model.scale_ground_motions('data/RCF6S_DBE.txt', method='a', para=None, plot=True, SF_code=2)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir=r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_MCE', fv_duration=0, display=False, auto_quit=False)
-    model.run_time_history(print_result=False, parallel=11)
+    T1 = 1.242
+    # model.scale_ground_motions('data/DBE_AS.txt', method='a', para=None, plot=True, SF_code=1)  # 只有跑时程需要定义
+    model.set_running_parameters(Output_dir=r'H:\MRF_results\test\MRF4S_AS_CP', fv_duration=0, display=True, auto_quit=False)
+    # model.run_time_history(print_result=False, parallel=11)
     # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=0, print_result=False)
     # model.run_pushover(0.1, print_result=True)
-    # model.run_cyclic_pushover([0, 0.02, -0.02, 0], print_result=True)
+    cp_path = np.loadtxt('data/cyclic_pushover_path.txt').tolist()
+    # cp_path = [0, 0.02, -0.02, 0]
+    model.run_cyclic_pushover(cp_path, print_result=True)
     # QuakeReadPushover('H:/RCF_results/test/STKO_6SRCF')
 
 
 def data_processing():
 
     time0 = time.time()
-    model = DataProcessing(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_MCE', gm_suffix='.txt')
-    model.set_output_dir(r'H:\RCF_results\STKO_6SRCF_DMIWRSRD_MCE_out', cover=1)
+    model = DataProcessing(r'H:\MRF_results\test\MRF4S_AS_CP', gm_suffix='.txt')
+    model.set_output_dir(r'H:\MRF_results\test\MRF4S_AS_CP_out', cover=1)
     model.read_results('mode', 'IDR')
-    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
-    model.read_results('CIDR', 'PFA', 'PFV', 'shear', print_result=True)
+    model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
+    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', print_result=True)
     # model.read_pushover(H=24300, plot_result=True)
-    model.read_th()  # 只有时程分析工况需要用
+    # model.read_th()  # 只有时程分析工况需要用
+    model.read_cyclic_pushover(H=16300)
     time1 = time.time()
     print('耗时', time1 - time0)
 

@@ -634,7 +634,7 @@ class DataProcessing:
         weight = 0
         for item in PO_path.iterdir():
             if item.is_file() and 'Support' in str(item):
-                weight += np.loadtxt(item)[10, 1]
+                weight += np.loadtxt(item)[10, 1] / 1000
         print(f'weight = {weight:.3f} kN')
         # 底部剪力
         shear = np.zeros(n)
@@ -642,7 +642,7 @@ class DataProcessing:
             if item.is_file() and 'Support' in str(item):
                 shear += np.loadtxt(item)[11:, 0]
         if abs(min(shear[:100])) > abs(max(shear[:100])):
-            shear *= -1
+            shear *= -1  # 将推覆方向始终设为正向
         # 各层位移
         u = np.zeros((self.N, n))
         for i in range(self.N):
@@ -702,8 +702,56 @@ class DataProcessing:
             plt.show()
         logger.success('完成     ')
 
-    def read_cyclic_pushover(self):
-        pass  # TODO
+
+    def read_cyclic_pushover(self, H: float,  plot_result=True):
+        """读取循环pushover分析结果
+
+        Args:
+            H (float): 结构总高度
+            plot_result (bool, optional): 是否绘制曲线（默认True）
+        """
+        if self.running_case != 'CP':
+            logger.warning('文件夹中存放的不是cyclic pushover分析结果')
+            return
+        logger.info('正在读取cyclic pushover结果...')
+        CP_path = self.root / 'Cyclic_pushover'
+        Time = np.loadtxt(CP_path / 'Time.out')[11:]
+        n = len(Time)
+        # 底部重力
+        weight = 0
+        for item in CP_path.iterdir():
+            if item.is_file() and 'Support' in str(item):
+                weight += np.loadtxt(item)[10, 1] / 1000
+        print(f'weight = {weight:.3f} kN')
+        # 底部剪力
+        shear = np.zeros(n)
+        for item in CP_path.iterdir():
+            if item.is_file() and 'Support' in str(item):
+                shear += np.loadtxt(item)[11:, 0] / 1000
+        if abs(min(shear[:20])) > abs(max(shear[:20])):
+            shear *= -1
+        # 归一化楼层位移角(各层位移除以结构总高)
+        RDR = np.loadtxt(CP_path / f'SDR_Roof.out')[11:]
+        # cyclic pushover滞回曲线
+        x_cp = RDR * 100
+        y_cp = shear / weight * 100
+        # 输出
+        np.savetxt(self.root_out/'屋顶位移角-基底剪力(kN).txt', np.column_stack((RDR, shear)))
+        np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力(%).txt', np.column_stack((x_cp, y_cp)))
+        # 画图
+        if plot_result:
+            plt.subplot(121)
+            plt.title('Roof drift - shear force')
+            plt.plot(RDR, shear)
+            plt.xlabel('Roof drift ratio')
+            plt.ylabel('Base shear (kN)')
+            plt.subplot(122)
+            plt.title('Roof drift - norm. shear force')
+            plt.plot(x_cp, y_cp)
+            plt.xlabel('Roof drift ratio (%)')
+            plt.ylabel('Norm. base shear (%)')
+            plt.show()
+        logger.success('完成     ')
 
 
     def read_th(self):

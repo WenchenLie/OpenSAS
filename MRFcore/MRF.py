@@ -572,16 +572,21 @@ class MRF:
         self._exec_win(running_case='PO', IDA_para=IDA_para, print_result=print_result)
 
 
-    def run_cyclic_pushover(self, RDR_path: list[float], print_result=False):
+    def run_cyclic_pushover(self, RDR_path: list[float], print_result=False, plot_path: bool=True):
         """运行cyclic pushover分析
 
         Args:
             RDR_path (list[float]): 屋顶位移角的加载路径
             print_result (bool, optional): 是否打印OpenSees输出的内容，默认为False
+            plot_path (bool, optional): 是否绘制加载路径，默认True
         """
         if self.do_not_run:
             return
         self.logger.info('开始进行Cyclic pushover分析')
+        if plot_path:
+            plt.plot(RDR_path, '-o')
+            plt.ylabel('Roof drift ratio')
+            plt.show()
         self.RDR_path = RDR_path
         with open(f'{self.Output_dir}/ground_motions.dat', 'w') as f:
             f.write('Cyclic pushover')
