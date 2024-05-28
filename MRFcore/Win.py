@@ -382,16 +382,16 @@ class WorkerThread(QThread):
         pattern = re.compile(r'(set maxRunTime )[0-9.]+(;  # \$\$\$)')
         WorkerThread.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + str(float(maxRunTime)) + r'\g<2>', text) 
-        pattern1 = re.compile(r'(set EQ )[01](;  # \$\$\$)')
-        pattern2 = re.compile(r'(set PO )[01](;  # \$\$\$)')
-        WorkerThread.find_pattern(pattern1, text)
-        WorkerThread.find_pattern(pattern2, text)
+        pattern = re.compile(r'(set analysis_type ")[THPOCP]+(";  # \$\$\$)')
+        WorkerThread.find_pattern(pattern, text)
         if running_case in ['TH', 'IDA']:
-            text = pattern1.sub(r'\g<1>' + '1' + r'\g<2>', text)
-            text = pattern2.sub(r'\g<1>' + '0' + r'\g<2>', text)
+            text = pattern.sub(r'\g<1>' + 'TH' + r'\g<2>', text)
         elif running_case == 'PO':
-            text = pattern1.sub(r'\g<1>' + '0' + r'\g<2>', text)
-            text = pattern2.sub(r'\g<1>' + '1' + r'\g<2>', text)
+            text = pattern.sub(r'\g<1>' + 'PO' + r'\g<2>', text)
+        elif running_case == 'CP':
+            text = pattern.sub(r'\g<1>' + 'CP' + r'\g<2>', text)
+        else:
+            raise ValueError('无法进行正则匹配 (set analysis_type)')
         pattern = re.compile(r'(set MainFolder ").+(";  # \$\$\$)')
         WorkerThread.find_pattern(pattern, text)
         text = pattern.sub(r'\g<1>' + Output_dir.absolute().as_posix() + r'\g<2>', text)
