@@ -110,7 +110,7 @@ def get_percentile_line(all_x: list[list], all_y: list[list], p: float, n: int, 
 
 
 class FragilityAnalysis():
-    available_DM_types = ['IM', 'IDR', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'BeamHinge', 'ColHinge', 'PanelZone']  # 允许的DM类型
+    available_DM_types = ['IM', 'IDR', 'DCF', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'beamHinge', 'colHinge', 'panelZone']  # 允许的DM类型
 
     def __init__(self, root: str | Path, DM_types: list[str],
                  collapse_limit: float=None, additional_items: list[str]=None):
@@ -120,14 +120,15 @@ class FragilityAnalysis():
             root (str | Path): 待读取数据的文件夹的路径
             DM_types (list[str]): 工程需求参数类型
             * [IDR] - 层间位移角
+            * [DCF] - 层间变形集中系数
             * [PFV] - 层间速度
             * [PFA] - 楼层绝对加速度
             * [ResIDR] - 残余层间位移角
             * [RoofIDR] - 屋顶层间位移角
             * [Shear] - 层间剪力
-            * [BeamHinge] - 最大梁铰变形
-            * [ColHinge] - 最大柱铰变形
-            * [PanelZone] - 最大节点域变形
+            * [beamHinge] - 最大梁铰变形
+            * [colHinge] - 最大柱铰变形
+            * [panelZone] - 最大节点域变形
             * additional_item - 其他项\n
             collapse_limit (float, optional): 倒塌极限层间位移角，如果给定DM对应的层间位移角角大于给定值，
             则不统计，可设为0.1或0.15，默认为None，即不删除倒塌点之后的点\n
@@ -167,7 +168,7 @@ class FragilityAnalysis():
         """读取结果文件"""
         # 读取数据
         self.data: list[pd.DataFrame] = []  # 包含所有时程结果的最值
-        columns=['IM', 'IDR', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'BeamHinge', 'ColHinge', 'PanelZone']
+        columns = self.available_DM_types
         if self.additional_items:
             columns += self.additional_items
         for idx_gm in range(self.GM_N):
@@ -187,6 +188,8 @@ class FragilityAnalysis():
                 line.append(IM)
                 IDR = np.loadtxt(folder/'层间位移角.out')  # 层间位移角
                 line.append(np.max(np.abs(IDR)))
+                DCF = np.loadtxt(folder/'DCF.out')  # 层间变形集中系数
+                line.append(np.max(np.abs(DCF)))
                 PFV = np.loadtxt(folder/'层速度.out')  # 层间相对速度
                 line.append(np.max(np.abs(PFV)))
                 PFA = np.loadtxt(folder/'层加速度(g).out')  # 层间相对加速度
@@ -197,12 +200,12 @@ class FragilityAnalysis():
                 line.append(np.max(np.abs(RoofIDR)))
                 Shear = np.loadtxt(folder/'楼层剪力(kN).out')  # 层间剪力
                 line.append(np.max(np.abs(Shear)))
-                BeanHinge = np.loadtxt(folder/'梁铰变形.out')  # 梁铰变形
-                line.append(np.max(np.abs(BeanHinge)))
-                ColHinge = np.loadtxt(folder/'柱铰变形.out')  # 柱铰变形
-                line.append(np.max(np.abs(ColHinge)))
-                PanelZone = np.loadtxt(folder/'节点域变形.out')  # 节点域变形
-                line.append(np.max(np.abs(PanelZone)))
+                beamHinge = np.loadtxt(folder/'梁铰变形.out')  # 梁铰变形
+                line.append(np.max(np.abs(beamHinge)))
+                colHinge = np.loadtxt(folder/'柱铰变形.out')  # 柱铰变形
+                line.append(np.max(np.abs(colHinge)))
+                panelZone = np.loadtxt(folder/'节点域变形.out')  # 节点域变形
+                line.append(np.max(np.abs(panelZone)))
                 if self.additional_items:
                     for item in self.additional_items:
                         if not (folder/f'{item}.out').exists():
@@ -543,20 +546,22 @@ if __name__ == "__main__":
 
     model = FragilityAnalysis(
         r'H:\RockingFrameWithRSRD\MRF4S_AS_RD_out',
-        DM_types=['IDR', 'ResIDR', 'PFA'],
+        DM_types=['IDR', 'ResIDR', 'PFA', 'DCF'],
         collapse_limit=0.1,
         additional_items=[])
     model.calc_IDA()
     model.frag_curve(
         damage_states={'IDR': [0.005, 0.01, 0.02, 0.04],
                       'ResIDR': [0.002, 0.005],
-                      'PFA': [0.1, 0.2, 0.3]},
+                      'PFA': [0.1, 0.2, 0.3],
+                      'DCF': [1.001]},
         labels={'IDR': ['DS-1', 'DS-2', 'DS-3', 'DS-4'],
                'ResIDR': ['DS-1', 'DS-2'],
-               'PFA': ['DS-1', 'DS-2', 'DS-3']}
+               'PFA': ['DS-1', 'DS-2', 'DS-3'],
+               'DCF': ['DS-1']}
     )
     model.exceedance_probability(
-        DM_values={'IDR': 0.1, 'ResIDR': 0.005, 'PFA': 0.2},
+        DM_values={'IDR': 0.1, 'ResIDR': 0.005, 'PFA': 0.2, 'DCF': 1.001},
     )
     model.collapse_evaluation(T1=1.2, MCE_spec=r'F:\Projects\MRF\data\DBE_AS.txt', SF_spec=1.5)
     model.visualization()

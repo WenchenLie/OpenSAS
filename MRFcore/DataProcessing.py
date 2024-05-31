@@ -119,7 +119,7 @@ class DataProcessing:
         Args:
             args (str): 要读取的结果类型，包括：  
             * mode：振型、模态  
-            * IDR：最大层间位移角，残余层间位移角  
+            * IDR：最大层间位移角，残余层间位移角，层间变形集中系数(DCF)  
             * shear：楼层剪力、基底剪力时程  
             * PFA：楼层加速度包络，屋顶加速度时程  
             * PFV：楼层速度包络， 屋顶速度时程  
@@ -253,18 +253,19 @@ class DataProcessing:
                 IDR_res = np.zeros(self.N + 1)
                 if not Path.exists(folder):
                     break
+                IDR_roof = np.array([max(abs(np.loadtxt(folder / f'SDR_Roof.out')))])  # 屋顶位移角
                 for story in range(1, self.N + 1):
                     # 遍历楼层
-                    data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]
+                    data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]  # 层间位移角
                     data_max= max(abs(data))
                     data_res = data[-1]
                     IDR[story] = data_max
                     IDR_res[story] = data_res
-                IDR_roof = np.array([max(abs(np.loadtxt(folder / f'SDR_Roof.out')))])
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层间位移角.out', IDR)
                 np.savetxt(self.root_out/subfolder/'残余层间位移角.out', IDR_res)
                 np.savetxt(self.root_out/subfolder/'屋顶层间位移角.out', IDR_roof)
+                np.savetxt(self.root_out/subfolder/'DCF.out', max(IDR) / IDR_roof)  # 层间变形集中系数
                 roof_d = pd.read_csv(folder/f'Disp{self.N+1}.out', header=None).to_numpy()[11:, 0]
                 np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d, fmt='%.4f')
                 num += 1
@@ -930,14 +931,14 @@ class DataProcessing:
 if __name__ == "__main__":
     
     time0 = time.time()
-    model = DataProcessing(r'H:\RCF_results\STKO_6SRCF_TMIW_MCE', gm_suffix='.th')
-    model.set_output_dir(r'H:\RCF_results\STKO_6SRCF_TMIW_MCE_out_test', cover=1)
+    model = DataProcessing(r'H:\RockingFrameWithRSRD\MRF4S_AS_RD', gm_suffix='.th')
+    model.set_output_dir(r'H:\RockingFrameWithRSRD\MRF4S_AS_RD_out', cover=1)
     model.read_results('mode', 'IDR')
-    # model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
+    model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     # l1 = pow(6100**2 + 4300**2, 0.5)  # 首层斜撑长度
     # l2 = pow(6100**2 + 4000**2, 0.5)  # 其他层斜撑长度
     # model.read_pushover(H=16300, plot_result=True)
-    model.read_th()  # 只有时程分析工况需要用
+    # model.read_th()  # 只有时程分析工况需要用
     time1 = time.time()
     print('耗时', time1 - time0)
 
