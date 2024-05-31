@@ -69,17 +69,24 @@ def data_processing():
 def fragility_analysis():
 
     # 层间位移角
-    Model = FragilityAnalysis(r'H:/RCF_results/6SRCF1_TMIW_out', EDP_type=1)
-    Model.calc_IDA(DM_limit=0.1)
-    Model.frag_curve(
-        Damage_State=[0.005, 0.01, 0.02, 0.04],
-        label=['DS-1', 'DS-2', 'DS-3', 'DS-4']
+    model = FragilityAnalysis(
+        r'H:/RCF_results/6SRCF1_TMIW_out',
+        DM_types=['IDR', 'PFA'],
+        collapse_limit=0.1,
+        )
+    model.calc_IDA()
+    model.frag_curve(
+        damage_states={'IDR': [0.005, 0.01, 0.02, 0.04],
+                       'PFA': [0.1, 0.2]},
+        labels={'IDR': ['DS-1', 'DS-2', 'DS-3', 'DS-4'],
+               'PFA': ['DS-1', 'DS-2']}
     )
-    Model.frag_collapse(IM_MCE=[0.5631186282943467*1.5])
-    Model.exceedance_probability(EDP_val=0.1)
-    Model.PlotCurves()
-    Model.Print_data()
-    Model.Save_data(r'H:/RCF_results/6SRCF1_TMIW_out_frag')
+    model.exceedance_probability(
+        DM_values={'IDR': 0.1, 'PFA': 0.2},
+    )
+    model.collapse_evaluation(T1=1.2, MCE_spec=r'F:\Projects\MRF\data\DBE_AS.txt', SF_spec=1.5)
+    model.visualization()
+    model.save_data(r'H:/RCF_results/6SRCF1_TMIW_out_frag')
 
 
 
@@ -88,8 +95,8 @@ if __name__ == "__main__":
     # run()
     # QuakeReadPushover('H:/RCF_results/6SRCFnoWall_pushover')
     # QuakePlotHinge(r'H:\RCF_results\6SRCFnoWall_pushover\Pushover', 'c', floor=2, axis=1, position='B')
-    data_processing()
-    # fragility_analysis()
+    # data_processing()
+    fragility_analysis()
 
     pass
 
