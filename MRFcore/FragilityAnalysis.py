@@ -54,22 +54,29 @@ def get_x(x: list, y: list, y0: float) -> float:
     else:
         raise ValueError('【Error】未找到交点-1')
 
-def get_y(x: list, y: list, x0: float) -> float:
+def get_y(x: list, y: list, x0: float, error: bool=True) -> float:
     """获得竖线x=x0与给定曲线的交点纵坐标
 
     Args:
-        x (list): 输入曲线的横坐标序列\n
-        y (list): 输入曲线的纵坐标序列\n
-        x0 (float): 竖直线x = x0\n
+        x (list): 输入曲线的横坐标序列
+        y (list): 输入曲线的纵坐标序列
+        x0 (float): 竖直线x = x0
+        error (boo, optional): 若x0超出范围，抛出异常or返回None
 
     Returns:
         float: 曲线与竖线交点纵坐标
     """
     # 获得x=x0与曲线的交点
     if x0 < min(x):
-        raise ValueError(f'【Error】x0 < min(x) ({x0} < {min(x)})')
+        if error:
+            raise ValueError(f'【Error】x0 < min(x) ({x0} < {min(x)})')
+        else:
+            return None
     if x0 > max(x):
-        raise ValueError(f'【Error】x0 > max(x) ({x0} > {max(x)})')
+        if error:
+            raise ValueError(f'【Error】x0 > max(x) ({x0} > {max(x)})')
+        else:
+            return None
     for i in range(len(x) - 1):
         if x[i] == x0:
             y0 = y[i]
@@ -80,33 +87,36 @@ def get_y(x: list, y: list, x0: float) -> float:
             return y0
     else:
         raise ValueError('【Error】未找到交点-2')
+
     
-def get_percentile_line(all_x: list[list], all_y: list[list], p: float, n: int, x0: float, x1: float) -> tuple[np.ndarray, np.ndarray]:
+def get_percentile_line(all_x: list[list], all_y: list[list], p: float, n: int) -> tuple[np.ndarray, np.ndarray]:
     """计算IDA曲线簇的百分位线
 
     Args:
-        all_x (list[list]): 所有独立IDA的横坐标\n
-        all_y (list[list]): 所有独立IDA的纵坐标\n
-        p (float): 百分位值\n
-        n (int): 输出的百分为线横坐标的点数量\n
-        x0 (float): 百分为线的横坐标起始范围\n
-        x1 (float): 百分为线的横坐标结束范围\n
+        all_x (list[list]): 所有独立IDA的横坐标
+        all_y (list[list]): 所有独立IDA的纵坐标
+        p (float): 百分位值
+        n (int): 输出的百分为线横坐标的点数量
 
     Returns:
         tuple[np.ndarray, np.ndarray]: 百分位线的横坐标、纵坐标
     """
     # 计算百分位线
-    x = np.linspace(x0, x1, n)  # 百分位线横坐标
+    x1 = min([min(i) for i in all_x])
+    x2 = max([max(i) for i in all_x])
+    x = np.linspace(x1, x2, n)  # 百分位线横坐标
     y = []  # 百分位线纵坐标
-    for i, xi in enumerate(x):
+    for _, xi in enumerate(x):
         # xi: int, yi: list
-        yi = [get_y(all_x[i], all_y[i], xi) for i in range(len(all_x))]
+        yi = []
+        for _, (line_x, line_y) in enumerate(zip(all_x, all_y)):
+            res = get_y(line_x, line_y, xi, False)
+            if res is not None:
+                yi.append(res)
         y_percentile = np.percentile(yi, p)
         y.append(y_percentile)
     y = np.array(y)
     return x, y
-
-
 
 
 class FragilityAnalysis():
@@ -240,9 +250,9 @@ class FragilityAnalysis():
                 DM_scatter += df[DM_name].to_list()
                 IM_lines.append([0] + df['IM'].to_list())
                 DM_lines.append([0] + df[DM_name].to_list())
-                pct_x, pct_16 = get_percentile_line(DM_lines, IM_lines, p=16, n=300, x0=0, x1=min([max(i) for i in DM_lines]))
-                pct_x, pct_50 = get_percentile_line(DM_lines, IM_lines, p=50, n=300, x0=0, x1=min([max(i) for i in DM_lines]))
-                pct_x, pct_84 = get_percentile_line(DM_lines, IM_lines, p=84, n=300, x0=0, x1=min([max(i) for i in DM_lines]))
+                pct_x, pct_16 = get_percentile_line(DM_lines, IM_lines, p=16, n=300)
+                pct_x, pct_50 = get_percentile_line(DM_lines, IM_lines, p=50, n=300)
+                pct_x, pct_84 = get_percentile_line(DM_lines, IM_lines, p=84, n=300)
             self.IM_scatter[DM_name] = IM_scatter
             self.DM_scatter[DM_name] = DM_scatter
             self.IM_lines[DM_name] = IM_lines
