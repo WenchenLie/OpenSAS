@@ -153,6 +153,8 @@ class FragilityAnalysis():
         self.DM_types = DM_types
         self.collapse_limit = collapse_limit
         self.additional_items = additional_items
+        if self.additional_items:
+            self.DM_types += self.additional_items
         self._check_file()
         self._read_file()
         # ResultFolder = model + '_new'
@@ -284,9 +286,8 @@ class FragilityAnalysis():
         self.x_frag: dict[str, np.ndarray] = {}
         self.y_frag: dict[str, list[np.ndarray]] = {}
         self.info: dict[str, str] = {}  # 记录拟合参数
-        for key in self.DM_types:
-            DM_name = key  # 损伤指标名称
-            DS = damage_states[DM_name]  # 损伤状态值
+        for DM_name, DS in damage_states.items():
+            # DM_name: 损伤指标名称, DS: 损伤状态值
             print(f'  正在计算`{DM_name}`类型的易损性曲线和概率需求模型      \r', end='')
             IM = self.IM_scatter[DM_name]
             DM = self.DM_scatter[DM_name]
@@ -333,11 +334,10 @@ class FragilityAnalysis():
         self.exceed_mean, self.exceed_std, self.exceed_pct50 = {}, {}, {}  # 均值、标准差、中位值
         self.exceed_x, self.exceed_y = {}, {}  # 超越概率点的横纵坐标
         self.exceed_x_fit, self.exceed_y_fit = {}, {}  # 超越概率点的拟合曲线横纵坐标
-        for n, key in enumerate(self.DM_types):
-            DM_name = key  # 损伤指标名称
-            DM_value = DM_values[DM_name]
+        for DM_name, DM_value in DM_values.items():
+            # DM_name: 损伤指标名称, DM_value: 损伤值
             # 以直线x=DM_value切割所有IDA曲线，获得交点
-            IM_lines, DM_lines = self.IM_lines[key], self.DM_lines[key]  # 所有IDA曲线
+            IM_lines, DM_lines = self.IM_lines[DM_name], self.DM_lines[DM_name]  # 所有IDA曲线
             if DM_value < min([min(i) for i in DM_lines]):
                 raise ValueError(f'`{DM_name}`类型的`{DM_value}`值小于所有IDA曲线的最小DM值({min([max(i) for i in DM_lines])})')
             if DM_value > max([max(i) for i in DM_lines]):
@@ -392,12 +392,17 @@ class FragilityAnalysis():
             fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
             # 1 IDA曲线
             ax: Axes = axes[0, 0]
+            label1 = 'Uncollapsed points'
+            label2 = 'Collapsed points'
             for i, (x, y) in enumerate(zip(self.DM_lines[DM_name], self.IM_lines[DM_name])):
                 if plot_IDA_idx == i:
                     ax.plot(x, y, color='blue', markersize=6, label=f'idx={i}', zorder=9999)
                 else:
                     ax.plot(x, y, color='#BFBFBF', markersize=4)
-                ax.scatter(x, y, color='red', zorder=8999, s=7)
+                ax.scatter(x[:-1], y[:-1], color='#E59EDD', zorder=8999, s=7, label=label1)  # 未倒塌点
+                ax.scatter(x[-1], y[-1], color='red', zorder=8999, s=10, label=label2)  # 临界倒塌点
+                label1 = None
+                label2 = None
             ax.plot(self.pct_x[DM_name], self.pct_16[DM_name], label='16%', color='green', linewidth=3, linestyle='--')
             ax.plot(self.pct_x[DM_name], self.pct_50[DM_name], label='50%', color='green', linewidth=3)
             ax.plot(self.pct_x[DM_name], self.pct_84[DM_name], label='84%', color='green', linewidth=3, linestyle='--')
@@ -412,33 +417,39 @@ class FragilityAnalysis():
             ax.set_ylabel('IM')
             # 2 ln(DM)-ln(IM) (线性)
             ax: Axes = axes[0, 1]
-            ax.plot(np.log(self.IM_scatter[DM_name]), np.log(self.DM_scatter[DM_name]), 'o')
-            ax.plot(np.log(self.ln_IM_fit[DM_name]), np.log(self.ln_DM_fit[DM_name]), 'red', label=f'ln(DM) = {self.A[DM_name]:.4f} + {self.B[DM_name]:.4f} * ln(IM)')
+            if DM_name in self.ln_IM_fit.keys():
+                ax.plot(np.log(self.IM_scatter[DM_name]), np.log(self.DM_scatter[DM_name]), 'o')
+                ax.plot(np.log(self.ln_IM_fit[DM_name]), np.log(self.ln_DM_fit[DM_name]), 'red', label=f'ln(DM) = {self.A[DM_name]:.4f} + {self.B[DM_name]:.4f} * ln(IM)')
+                ax.legend()
             ax.set_title('ln(DM) - ln(IM)')
             ax.set_xlabel('ln(IM)')
             ax.set_ylabel('ln(DM)')
-            ax.legend()
             # 3 易损性曲线
             ax: Axes = axes[1, 0]
-            x_frag = self.x_frag[DM_name]
-            for i, y_frag in enumerate(self.y_frag[DM_name]):
-                ax.plot(x_frag, y_frag, label=f'{self.labels[DM_name][i]} ({self.damage_states[DM_name][i]})')
+            if DM_name in self.x_frag.keys():
+                x_frag = self.x_frag[DM_name]
+                for i, y_frag in enumerate(self.y_frag[DM_name]):
+                    ax.plot(x_frag, y_frag, label=f'{self.labels[DM_name][i]} ({self.damage_states[DM_name][i]})')
                 ax.legend()
             ax.set_title('Fragility curves')
             ax.set_xlim(0)
             ax.set_ylim(0, 1)
-            ax.set_xlabel('Sa(T1)')
+            ax.set_xlabel('IM')
             ax.set_ylabel('Exceeding probability')
             # 4 DM超越概率
             ax: Axes = axes[1, 1]
-            ax.set_title(f'Exceedance probability of {DM_name}')
+            if DM_name in self.DM_values.keys():
+                ax.set_title(f'Exceedance probability of {DM_name}>{self.DM_values[DM_name]}')
+                ax.set_ylabel(f'P({DM_name}>{self.DM_values[DM_name]})')
+            else:
+                ax.set_title(f'Exceedance probability of {DM_name}')
+                ax.set_ylabel(f'P')
             ax.set_xlabel('IM')
-            ax.set_ylabel('Exceedance probability')
             if DM_name in self.exceed_x_fit.keys():
                 ax.plot(self.exceed_x_fit[DM_name], self.exceed_y_fit[DM_name])
                 ax.plot(self.exceed_x[DM_name], self.exceed_y[DM_name], 'o', color='red')
-                ax.set_xlim(0)
-                ax.set_ylim(0)
+            ax.set_xlim(0)
+            ax.set_ylim(0)
             # 画图
             plt.tight_layout()
             plt.show()
@@ -510,12 +521,13 @@ class FragilityAnalysis():
             ws.cell(1, 3, '拟合值')
             ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
             ws.merge_cells(start_row=1, start_column=3, end_row=1, end_column=4)
-            for i, (x, y) in enumerate(zip(np.log(self.IM_scatter[DM_name]), np.log(self.DM_scatter[DM_name]))):
-                ws.cell(i+2, 1, x)
-                ws.cell(i+2, 2, y)
-            for i, (x, y) in enumerate(zip(np.log(self.ln_IM_fit[DM_name]), np.log(self.ln_DM_fit[DM_name]))):
-                ws.cell(i+2, 3, x)
-                ws.cell(i+2, 4, y)
+            if DM_name in self.ln_IM_fit.keys():
+                for i, (x, y) in enumerate(zip(np.log(self.IM_scatter[DM_name]), np.log(self.DM_scatter[DM_name]))):
+                    ws.cell(i+2, 1, x)
+                    ws.cell(i+2, 2, y)
+                for i, (x, y) in enumerate(zip(np.log(self.ln_IM_fit[DM_name]), np.log(self.ln_DM_fit[DM_name]))):
+                    ws.cell(i+2, 3, x)
+                    ws.cell(i+2, 4, y)
             wb.save(output_path / f'概率需求模型_{DM_name}.xlsx')
             # 3 地震易损性、超越概率(倒塌易损性)
             wb = px.Workbook()
@@ -523,17 +535,18 @@ class FragilityAnalysis():
             ws1.title = '地震易损性'
             ws1.cell(1, 1, 'IM')
             ws1.cell(1, 2, '超越概率')
-            ws1.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
-            ws1.merge_cells(start_row=1, start_column=2, end_row=1, end_column=1+len(self.labels[DM_name]))
-            for i, label in enumerate(self.labels[DM_name]):
-                ws1.cell(2, i+2, label)
-            for i, x in enumerate(self.x_frag[DM_name]):
-                ws1.cell(3+i, 1, x)
-            for i in range(len(self.y_frag[DM_name])):
-                for j, y in enumerate(self.y_frag[DM_name][i]):
-                    ws1.cell(3+j, i+2, y)
+            if DM_name in self.x_frag.keys():
+                ws1.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
+                ws1.merge_cells(start_row=1, start_column=2, end_row=1, end_column=1+len(self.labels[DM_name]))
+                for i, label in enumerate(self.labels[DM_name]):
+                    ws1.cell(2, i+2, label)
+                for i, x in enumerate(self.x_frag[DM_name]):
+                    ws1.cell(3+i, 1, x)
+                for i in range(len(self.y_frag[DM_name])):
+                    for j, y in enumerate(self.y_frag[DM_name][i]):
+                        ws1.cell(3+j, i+2, y)
             if DM_name in self.exceed_x.keys():
-                ws2 = wb.create_sheet(f'超越概率({DM_name}>{self.DM_values[DM_name]})')
+                ws2 = wb.create_sheet(f'超越概率P({DM_name}>{self.DM_values[DM_name]})')
                 ws2.cell(1, 1, '实际(散点)')
                 ws2.cell(1, 3, '拟合(曲线)')
                 ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
@@ -546,14 +559,10 @@ class FragilityAnalysis():
                     ws2.cell(2+i, 4, y)
             wb.save(output_path / f'易损性曲线_{DM_name}.xlsx')
             # 保存计算结果参数
-            with open(output_path / f'概率特征_{DM_name}.out', 'w') as f:
-                f.write(self.info[DM_name])
+            if DM_name in self.info.keys():
+                with open(output_path / f'概率特征_{DM_name}.out', 'w') as f:
+                    f.write(self.info[DM_name])
         logger.success('已保存数据')
-
-    @classmethod
-    def show_available_DM(cls):
-        """查看可用的DM类型"""
-        print('可用的DM类型:', cls.available_DM_types)
 
 
 
