@@ -480,7 +480,7 @@ class FragilityAnalysis():
         """保存分析结果
             
             Args:
-                collapse_state (str | Path): 保存结果的文件夹路径
+                output_path (str | Path): 保存结果的文件夹路径
         """
         output_path = Path(output_path)
         if not Path.exists(output_path):
