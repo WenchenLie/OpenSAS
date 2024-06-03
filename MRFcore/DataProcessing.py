@@ -45,7 +45,7 @@ class DataProcessing:
         self._check_data()
 
     def _check_data(self):
-        # 检查数据文件是否齐全
+        """检查数据文件是否齐全"""
         list_ = ['ground_motions', 'N', 'running_case']
         for file in list_:
             if not Path.exists(self.root/f'{file}.dat'):
@@ -183,8 +183,8 @@ class DataProcessing:
         return y_new
 
 
-    def _read_mode(self, print_result):
-        # 读取模态结果
+    def _read_mode(self, print_result: bool):
+        """读取模态结果"""
         logger.info('正在读取模态结果...')
         mode = np.zeros((self.N, self.N))  # 每行代表每阶振型
         # self.mode的第i行j列为第i阶振型第j层位移
@@ -210,8 +210,8 @@ class DataProcessing:
         logger.success('完成     ')
 
 
-    def _read_other(self, print_result):
-        # 读取倒塌状态、时间序列
+    def _read_other(self, print_result: bool):
+        """读取倒塌状态、时间序列"""
         for idx_gm in range(self.GM_N):
             # 遍历地震动
             gm_name = self.GM_names[idx_gm]
@@ -237,8 +237,8 @@ class DataProcessing:
                 if self.running_case == 'TH':
                     break
         
-    def _read_IDR(self, print_result):
-        # 读取最大层间位移角，残余层间位移角
+    def _read_IDR(self, print_result: bool):
+        """读取最大层间位移角，残余层间位移角"""
         logger.info('正在读取层间位移角...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -289,8 +289,8 @@ class DataProcessing:
         return result
         
 
-    def _read_CIDR(self, print_result):
-        # 读取累积层间位移角
+    def _read_CIDR(self, print_result: bool):
+        """读取累积层间位移角"""
         logger.info('正在计算累积层间位移角...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -316,14 +316,14 @@ class DataProcessing:
                     break
         logger.success('完成     ')
         
-    def _read_shear(self, print_result):
-        # 读取层剪力、底部剪力时程
+    def _read_shear(self, print_result: bool):
+        """读取层剪力、底部剪力时程"""
         logger.info('正在计算楼层剪力...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
             gm_name = self.GM_names[idx_gm]
             num =  1
-            print(f'    正在计算{gm_name}累积层间位移角...({idx_gm+1}/{self.GM_N})     \r', end='')
+            print(f'    正在计算{gm_name}层剪力...({idx_gm+1}/{self.GM_N})     \r', end='')
             while True:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
@@ -361,10 +361,8 @@ class DataProcessing:
         t = np.linspace(0, (len(th) - 1) * dt, len(th))
         return th, t
 
-
-
-    def _read_PFA(self, print_result):
-        # 读取楼层加速度包络，屋顶加速度时程
+    def _read_PFA(self, print_result: bool):
+        """读取楼层加速度包络，屋顶加速度时程"""
         logger.info('正在读取楼层加速度...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -419,8 +417,8 @@ class DataProcessing:
         return v
 
 
-    def _read_PFV(self, print_result):
-        # 读取楼层速度
+    def _read_PFV(self, print_result: bool):
+        """读取楼层速度"""
         logger.info('正在读取楼层速度...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -454,13 +452,13 @@ class DataProcessing:
                     break
         logger.success('完成     ')
 
-    def _read_beanHinge(self, print_result):
-        """行数=楼层数，列数=柱子数，
+    def _read_beanHinge(self, print_result: bool):
+        """读取梁铰  
+        行数=楼层数，列数=柱子数，
         每一行中，从左到右依次为：
         左边柱右侧梁铰→中柱两侧梁铰→右边柱左侧梁铰。
         即梁铰顺序是从左到右的
         """
-        # 读取梁铰
         logger.info('正在读取梁铰变形...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -501,10 +499,12 @@ class DataProcessing:
                     break
         logger.success('完成     ')
 
-    def _read_colHinge(self, print_result):
-        """行数=层数*2，列数=柱子数，每一列中，随行数增大柱铰的实际位置顺序从下到上        
+    def _read_colHinge(self, print_result: bool):
         """
-        # 读取柱铰
+        读取柱铰  
+        行数=层数*2，列数=柱子数，每一列中，随行数增大柱铰的实际位置顺序从下到上        
+        """
+        # 
         logger.info('正在读取柱铰变形...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -547,10 +547,11 @@ class DataProcessing:
                     break
         logger.success('完成     ')
 
-    def _read_panelZone(self, print_result):
-        """行数=层数，列数=柱子数，每一列中，随行数增大节点的实际位置顺序从下到上        
+    def _read_panelZone(self, print_result: bool):
         """
-        # 读取节点域
+        读取节点域  
+        行数=层数，列数=柱子数，每一列中，随行数增大节点的实际位置顺序从下到上        
+        """
         logger.info('正在读取节点域变形...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
@@ -756,6 +757,7 @@ class DataProcessing:
 
 
     def read_th(self):
+        """读取时程分析"""
         if not self.running_case == 'TH':
             logger.warning('【Error】方法read_th仅限用于时程分析工况')
             return

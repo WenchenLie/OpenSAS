@@ -550,6 +550,11 @@ class FragilityAnalysis():
                 f.write(self.info[DM_name])
         logger.success('已保存数据')
 
+    @classmethod
+    def show_available_DM(cls):
+        """查看可用的DM类型"""
+        print('可用的DM类型:', cls.available_DM_types)
+
 
 
 if __name__ == "__main__":
