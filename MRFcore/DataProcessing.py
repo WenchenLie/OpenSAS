@@ -1,15 +1,20 @@
-import sys
 import os
+import sys
 import json
 import shutil
-import numpy as np
-import matplotlib.pyplot as plt
-from loguru import logger
+import time
 from pathlib import Path
 from math import pi
-import time
+
+import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
+import originpro as op
+from originpro import WSheet
+from loguru import logger
 from scipy.interpolate import interp1d
+
+from MRFcore.WriteOrigin import WriteOrigin
 
 
 logger.remove()
@@ -91,14 +96,14 @@ class DataProcessing:
             logger.error('请注意！输出文件夹与原文件夹相同！')
             raise ValueError('【Error】')
         if not Path.exists(self.root_out):
-            Path.mkdir(self.root_out)
+            os.makedirs(self.root_out)
         else:
             if cover == 1:
                 logger.warning(f'将覆盖原有数据')
             elif cover == 2:
                 logger.warning('将删除原文件夹')
                 shutil.rmtree(output_dir)
-                Path.mkdir(self.root_out)
+                os.makedirs(self.root_out)
             elif cover == 3:
                 self.skip = True
                 logger.warning('退出程序')
@@ -928,6 +933,34 @@ class DataProcessing:
         panel_zone_stat_16th.to_csv(self.root_out/'结果统计'/'节点域_统计_16th.csv', encoding='ANSI', float_format='%.6f')
         panel_zone_stat_50th.to_csv(self.root_out/'结果统计'/'节点域_统计_50th.csv', encoding='ANSI', float_format='%.6f')
         panel_zone_stat_84th.to_csv(self.root_out/'结果统计'/'节点域_统计_84th.csv', encoding='ANSI', float_format='%.6f')
+        # 写入origin
+        logger.info('正在写入Origin文件...')
+        all_data: dict[str, tuple[pd.DataFrame, pd.DataFrame, str]] = {
+            # y_lname: [data, data_stat, x_lname, unit]
+            'IDR': (IDR, IDR_stat, ''),
+            'IDRroof': (IDRroof, IDRroof_stat, ''),
+            'Shear': (Shear, Shear_stat, 'kN'),
+            'CIDR': (CIDR, CIDR_stat, ''),
+            'PFV': (PFV, PFV_stat, 'mm/s'),
+            'PFA': (PFA, PFA_stat, 'g'),
+            'RIDR': (RIDR, RIDR_stat, ''),
+        }
+        with WriteOrigin(op, self.root_out/'结果统计', 'Results.opju'):
+            wb = op.find_book('w', 'Book1')
+            wb.destroy()  # 删除自动生成的workbook
+            for y_lname, valus in all_data.items():
+                data, data_stat, unit = valus
+                wb = op.new_book('w', y_lname)
+                ws: WSheet = wb[0]
+                ws.name = y_lname
+                ws.from_list(0, data.index, lname='Story', units='')  # X列
+                ws.from_df(data, c1=1)  # Y列
+                ws.set_labels([unit] * len(data.columns), 'U', offset=1)  # 各楼层Y列单位
+                ws.set_labels(['Individual'] * len(data.columns), 'C', offset=1)  # 各楼层Y列注释
+                ws.from_df(data_stat, c1=len(data.columns) + 1)  # 统计特征Y列
+                ws.set_labels([unit] * 5, 'U', offset=len(data.columns) + 1)  # 统计特征Y列单位
+                ws.set_labels(['Mean', 'STD', '16%', '50%', '84%'], 'C', offset=len(data.columns) + 1)  # 统计特征Y列注释
+                ws.set_labels([y_lname] * (ws.cols - 1), 'L', offset=1)  # 所有Y列长名称
 
 
 if __name__ == "__main__":

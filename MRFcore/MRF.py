@@ -93,10 +93,14 @@ class MRF:
     
 
     def _init_set_QApp(self):
-        QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
-        self.app = QApplication(sys.argv)
+        app = QApplication.instance()
+        if not app:
+            QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+            QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+            QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+            self.app = QApplication(sys.argv)
+        else:
+            self.app = app
 
 
     def _check_version(self):

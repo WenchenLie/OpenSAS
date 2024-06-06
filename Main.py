@@ -54,14 +54,14 @@ def run():
 def data_processing():
 
     time0 = time.time()
-    model = DataProcessing(r'H:\MRF_results\test\MRF4S_AS_CP', gm_suffix='.txt')
-    model.set_output_dir(r'H:\MRF_results\test\MRF4S_AS_CP_out', cover=1)
+    model = DataProcessing(r'H:\RockingFrameWithRSRD\MRF4S_AS_RD1_MCE', gm_suffix='.txt', gm_file=r'F:\Papers\RSRD3\RockingMRF\GMs')
+    model.set_output_dir(r'H:\RockingFrameWithRSRD\test\MRF4S_AS_RD1_MCE_out', cover=1)
     model.read_results('mode', 'IDR')
     model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
     # model.read_results('CIDR', 'PFA', 'PFV', 'shear', print_result=True)
     # model.read_pushover(H=24300, plot_result=True)
-    # model.read_th()  # 只有时程分析工况需要用
-    model.read_cyclic_pushover(H=16300)
+    model.read_th()  # 只有时程分析工况需要用
+    # model.read_cyclic_pushover(H=16300)
     time1 = time.time()
     print('耗时', time1 - time0)
 
@@ -95,8 +95,8 @@ if __name__ == "__main__":
     # run()
     # QuakeReadPushover('H:/RCF_results/6SRCFnoWall_pushover')
     # QuakePlotHinge(r'H:\RCF_results\6SRCFnoWall_pushover\Pushover', 'c', floor=2, axis=1, position='B')
-    # data_processing()
-    fragility_analysis()
+    data_processing()
+    # fragility_analysis()
 
     pass
 
