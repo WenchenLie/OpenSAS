@@ -33,7 +33,8 @@ class DataProcessing:
             self, root: str | Path,
             max_mode: int=None,
             gm_file: str | Path=Path(__file__).parent.parent/'GMs',
-            gm_suffix='.txt'):
+            gm_suffix='.txt',
+            attached_opju: str | Path=None):
         """基于计算后的结果文件夹提取计算结果
 
         Args:
@@ -41,12 +42,19 @@ class DataProcessing:
             check (bool, optional): 是否检查数据，默认True
             max_mode (int, optional): 读取的最大模态数，默认None
             gm_suffix (str, optional): 地震动文件的后缀，默认'.txt'
+            attached_opju (str | Path, optional): origin文件路径，若给定则数据将写入到改文件，若不指定则将创建一个
         """
+
         self.skip = False
         self.max_mode = max_mode
         self.root = Path(root)
         self.gm_file = Path(gm_file)
         self.gm_suffix = gm_suffix
+        if attached_opju:
+            attached_opju = Path(attached_opju)
+            if not attached_opju.suffix == '.opju':
+                raise FileNotFoundError('origin文件后缀应为".opju"')
+        self.attached_opju = attached_opju
         self._check_data()
 
     def _check_data(self):
@@ -945,9 +953,12 @@ class DataProcessing:
             'PFA': (PFA, PFA_stat, 'g'),
             'RIDR': (RIDR, RIDR_stat, ''),
         }
-        with WriteOrigin(op, self.root_out/'结果统计', 'Results.opju'):
-            wb = op.find_book('w', 'Book1')
-            wb.destroy()  # 删除自动生成的workbook
+        if not self.attached_opju:
+            file_path = self.root_out / f'{self.root_out.stem}.opju'
+        else:
+            file_path = self.attached_opju
+        with WriteOrigin(op, file_path, self.root_out.stem):
+            # writer.delete_obj('Book1')  # 删除自动生成的workbook
             for y_lname, valus in all_data.items():
                 data, data_stat, unit = valus
                 wb = op.new_book('w', y_lname)
