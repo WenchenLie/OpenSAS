@@ -768,7 +768,6 @@ class DataProcessing:
             plt.show()
         logger.success('完成     ')
 
-
     def read_th(self):
         """读取时程分析"""
         if not self.running_case == 'TH':
@@ -780,6 +779,8 @@ class DataProcessing:
         IDR_stat = np.zeros((self.N + 1, 5))  # 均值，标准差，16,50,84分位数
         IDRroof = np.zeros(self.GM_N)  # 屋顶层间位移角
         IDRroof_stat = np.zeros(5)  # 均值，标准差，16,50,84分位数
+        DCF = np.zeros(self.GM_N)  # 层间位移角集中系数
+        DCF_stat = np.zeros(5)  # 均值，标准差，16,50,84分位数
         Shear = np.zeros((self.N, self.GM_N))  # 最大楼层剪力
         Shear_stat = np.zeros((self.N, 5))  # 均值，标准差，16,50,84分位数
         CIDR = np.zeros((self.N + 1, self.GM_N))  # 累积层间位移角
@@ -811,6 +812,8 @@ class DataProcessing:
             IDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层间位移角.out', IDR[:, idx_gm])
             # 屋顶位移角
             IDRroof[idx_gm] = MyLoadtxt(self.root_out/gm_name/'屋顶层间位移角.out', IDRroof[idx_gm])
+            # 层间位移角集中系数
+            DCF[idx_gm] = MyLoadtxt(self.root_out/gm_name/'DCF.out', DCF[idx_gm])
             # 最大楼层剪力
             Shear[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'楼层剪力(kN).out', Shear[:, idx_gm])
             # 累积层间位移角
@@ -838,6 +841,11 @@ class DataProcessing:
         IDRroof_stat[2] = np.percentile(IDRroof, 16)
         IDRroof_stat[3] = np.percentile(IDRroof, 50)
         IDRroof_stat[4] = np.percentile(IDRroof, 84)
+        DCF_stat[0] = np.mean(DCF)
+        DCF_stat[1] = np.std(DCF)
+        DCF_stat[2] = np.percentile(DCF, 16)
+        DCF_stat[3] = np.percentile(DCF, 50)
+        DCF_stat[4] = np.percentile(DCF, 84)
         Shear_stat[:, 0] = np.mean(Shear, axis=1)
         Shear_stat[:, 1] = np.std(Shear, axis=1)
         Shear_stat[:, 2] = np.percentile(Shear, 16, axis=1)
@@ -882,6 +890,7 @@ class DataProcessing:
         columns = ['均值', '标准差', '16th', '50th', '84th']
         IDR = pd.DataFrame(IDR, index=range(0, self.N + 1), columns=self.GM_names)
         IDRroof = pd.DataFrame([IDRroof], columns=self.GM_names)
+        DCF = pd.DataFrame([DCF], columns=self.GM_names)
         Shear = pd.DataFrame(Shear, index=range(1, self.N + 1), columns=self.GM_names)
         CIDR = pd.DataFrame(CIDR, index=range(0, self.N + 1), columns=self.GM_names)
         PFV = pd.DataFrame(PFV, index=range(1, self.N + 1), columns=self.GM_names)
@@ -889,6 +898,7 @@ class DataProcessing:
         RIDR = pd.DataFrame(RIDR, index=range(0, self.N + 1), columns=self.GM_names)
         IDR_stat = pd.DataFrame(IDR_stat, index=range(0, self.N + 1), columns=columns)
         IDRroof_stat = pd.DataFrame([IDRroof_stat], columns=columns)
+        DCF_stat = pd.DataFrame([DCF_stat], columns=columns)
         Shear_stat = pd.DataFrame(Shear_stat, index=range(1, self.N + 1), columns=columns)
         CIDR_stat = pd.DataFrame(CIDR_stat, index=range(0, self.N + 1), columns=columns)
         PFV_stat = pd.DataFrame(PFV_stat, index=range(1, self.N + 1), columns=columns)
@@ -914,6 +924,7 @@ class DataProcessing:
         panel_zone_stat_84th = pd.DataFrame(panel_zone_stat[4], index=index_panel, columns=range(1, self.span + 2))
         IDR.to_csv(self.root_out/'结果统计'/'层间位移角.csv', encoding='ANSI', float_format='%.6f')
         IDRroof.to_csv(self.root_out/'结果统计'/'屋顶层间位移角.csv', encoding='ANSI', float_format='%.6f')
+        DCF.to_csv(self.root_out/'结果统计'/'DCF.csv', encoding='ANSI', float_format='%.6f')
         Shear.to_csv(self.root_out/'结果统计'/'楼层剪力(kN).csv', encoding='ANSI', float_format='%.2f')
         CIDR.to_csv(self.root_out/'结果统计'/'累积层间位移角.csv', encoding='ANSI', float_format='%.6f')
         PFV.to_csv(self.root_out/'结果统计'/'层速度(mm_s).csv', encoding='ANSI', float_format='%.2f')
@@ -921,6 +932,7 @@ class DataProcessing:
         RIDR.to_csv(self.root_out/'结果统计'/'残余层间位移角.csv', encoding='ANSI', float_format='%.6f')
         IDR_stat.to_csv(self.root_out/'结果统计'/'层间位移角_统计.csv', encoding='ANSI', float_format='%.6f')
         IDRroof_stat.to_csv(self.root_out/'结果统计'/'屋顶层间位移角_统计.csv', encoding='ANSI', float_format='%.6f')
+        DCF_stat.to_csv(self.root_out/'结果统计'/'DCF_统计.csv', encoding='ANSI', float_format='%.6f')
         Shear_stat.to_csv(self.root_out/'结果统计'/'楼层剪力_统计.csv', encoding='ANSI', float_format='%.2f')
         CIDR_stat.to_csv(self.root_out/'结果统计'/'累积层间位移角_统计.csv', encoding='ANSI', float_format='%.6f')
         PFV_stat.to_csv(self.root_out/'结果统计'/'层速度_统计.csv', encoding='ANSI', float_format='%.2f')
@@ -947,6 +959,7 @@ class DataProcessing:
             # y_lname: [data, data_stat, x_lname, unit]
             'IDR': (IDR, IDR_stat, ''),
             'IDRroof': (IDRroof, IDRroof_stat, ''),
+            'DCF': (DCF, DCF_stat, ''),
             'Shear': (Shear, Shear_stat, 'kN'),
             'CIDR': (CIDR, CIDR_stat, ''),
             'PFV': (PFV, PFV_stat, 'mm/s'),
