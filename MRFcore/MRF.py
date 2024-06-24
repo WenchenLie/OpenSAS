@@ -1,24 +1,3 @@
-import os
-import sys
-import shutil
-import re
-import json
-from pathlib import Path
-from math import pi
-from typing import Literal, Tuple
-
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
-from loguru import logger
-
-from .Win import MyWin
-from .Spectrum import Spectrum
-from .Win import MyWin
-from .Spectrum import Spectrum
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QMessageBox
-
 """
 多层钢框架、混凝土框架OpenSees模型分析类
 作者：列文琛
@@ -26,6 +5,27 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
 更新：2024-04-12，增加多进程并行计算
 """
+import os
+import sys
+import shutil
+import re
+import json
+import pickle
+from pathlib import Path
+from math import pi
+from typing import Literal
+
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+from loguru import logger
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QMessageBox
+
+from .Win import MyWin
+from .Spectrum import Spectrum
+from .Records import Records
+
 
 logger.remove()
 logger.add(
@@ -117,11 +117,11 @@ class MRF:
             self.logger.warning(f'opensees脚本文本格式版本号({v})与本程序兼容的版本({self.format_version})不对应，可能会产生未知问题！')
 
 
-    def select_ground_motions(self, GMs: list, suffix: str='.txt'):
+    def select_ground_motions(self, GMs: list[str], suffix: str='.txt'):
         """选择地震动文件
 
         Args:
-            GMs (list): 一个包含所有地震动文件名(不包括后缀)的列表  
+            GMs (list[str]): 一个包含所有地震动文件名(不包括后缀)的列表  
             suffix (str, optional): 地震动文件后缀，默认为.txt
 
         Example:
@@ -402,6 +402,38 @@ class MRF:
             plt.close()
         self.scaling_finished = True
 
+    # TODO: 后处理暂不支持从pkl读取地震动
+    def records_from_pickle(self,
+        pkl_file: Path | str,
+        scale: Literal['scaled', 'unscaled', 'normalised']='scaled'
+        ) -> None:
+        """从pickle导入并缩放地震动，其中pickle文件从GroungMotons项目获得
+
+        Args:
+            pkl_file (Path | str): pickle文件路径
+            scale (Literal['scaled', 'unscaled', 'normalised'], optional): 缩放方法: 缩放, 不缩放, 归一化，默认'scaled'
+        """
+        if not Path(pkl_file).exists():
+            raise FileNotFoundError(f'无法找到文件：{str(Path(pkl_file).absolute())}')
+        with open(pkl_file, 'rb') as f:
+            records: Records = pickle.load(f)
+        if scale == 'scaled':
+            results = records.get_scaled_records()
+        elif scale == 'unscaled':
+            results = records.get_unscaled_records()
+        elif scale == 'normalised':
+            results = records.get_normalised_records()
+        else:
+            raise ValueError(f'参数`scale`错误！')
+        self.GM_N = records.N_gm
+        self.GM_names = []
+        for i, (th, dt) in enumerate(results):
+            self.GM_names.append(f'pkl_No_{i + 1}')
+            self.GM_dts.append(dt)
+            self.GM_NPTS.append(len(th))
+            self.GM_durations.append(round((len(th) - 1) * dt, 6))
+        self.logger.success(f'已从{Path(pkl_file).name}导入{self.GM_N}条地震动')
+        # TODO: 地震动缩放
 
     def _check_Output_dir(self):
         # 判断输出文件夹是否存在
@@ -541,7 +573,7 @@ class MRF:
             self.logger.warning('采用多进程并行计算时，暂不支持显示实时动画')
             self.display = False
         # 计算无缩放反应谱
-        T = np.arange(0, 6.02, 0.01)
+        T = np.arange(0, 6.01, 0.01)
         self.T = T
         self.GM_RSA, self.GM_RSV, self.GM_RSD = np.zeros((self.GM_N, len(T))), np.zeros((self.GM_N, len(T))), np.zeros((self.GM_N, len(T)))
         for idx in range(self.GM_N):
