@@ -381,11 +381,12 @@ class FragilityAnalysis():
         logger.success('已计算超越概率曲线')
 
 
-    def visualization(self, plot_IDA_idx: int=None):
+    def visualization(self, plot_IDA_idx: int=None, plot: bool=True):
         """可视化曲线图
 
         Args:
             plot_IDA_idx (int, optional): 如果指定，则绘制索引为`plot_IDA_idx`的IDA曲线
+            plot (bool, optional): 是否绘制曲线图
         """
         self.figs: dict[str, Figure] = {}
         for DM_name in self.DM_types:
@@ -451,8 +452,9 @@ class FragilityAnalysis():
             ax.set_xlim(0)
             ax.set_ylim(0)
             # 画图
-            plt.tight_layout()
-            plt.show()
+            if plot:
+                plt.tight_layout()
+                plt.show()
             self.figs[DM_name] = fig
 
 
