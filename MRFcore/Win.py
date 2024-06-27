@@ -1312,7 +1312,6 @@ def run_single_IDA_tcl(
                 os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
             else:
                 collapsed = 0
-            queue.put(message)
             if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
                 os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
                 print(Output_dir / f'{gm_name}_{run_num+1}')
