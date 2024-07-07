@@ -180,3 +180,6 @@ temp*.tcl
 ui2py_Converter.py
 develop/
 .gitignore
+
+Main_*.py
+models_*/
