@@ -12,16 +12,23 @@ def QuakeReadPushover(folder: Path):
     for i in range(1, 1000):
         if (folder/'Pushover'/f'Support{i}.out').exists():
             data = np.loadtxt(folder/'Pushover'/f'Support{i}.out')
-            weight += data[10, 1]
-            shear += data[:, 0]
-    shear /= -weight
-    print('最大剪力 =', max(shear * abs(weight)))
+            weight += data[9, 1]
+            shear += -data[:, 0]
+    shear_norm = shear / weight
+    print('最大剪力 =', max(shear * weight))
     print('weight =', weight)
-    plt.plot(SDR * 100, shear)
+    plt.subplot(121)
+    plt.plot(SDR * 100, shear_norm)
     plt.xlabel('Roof drift ratio [%]')
     plt.ylabel('Normalised base shear, V/W')
     plt.xlim(0, 10)
-    plt.ylim(0)
+    # plt.ylim(0)
+    plt.subplot(122)
+    plt.plot(SDR * 100, shear / 1000)
+    plt.xlabel('Roof drift ratio [%]')
+    plt.ylabel('Base shear [kN]')
+    plt.xlim(0, 10)
+    # plt.ylim(0)
     plt.show()
 
 
