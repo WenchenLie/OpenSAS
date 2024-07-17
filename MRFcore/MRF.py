@@ -62,6 +62,7 @@ class MRF:
         self.logger = logger
         logger.success('钢框架时程分析/Pushover分析/IDA工具')
         logger.success(f'opensees代码格式版本：{self.format_version}')
+        self._init_check_path(self.cwd, self.dir_gm, self.dir_model, self.dir_temp, self.dir_log, self.dir_terminal, self.dir_subroutines)
         self.model_name = model_name  # 模型名
         if script not in ['tcl', 'py']:
             raise ValueError('参数`script`应为"tcl"或"py"')
@@ -91,6 +92,12 @@ class MRF:
         self._check_version()
         self.logger.success(f'已定义模型：{self.model_name}')
     
+    @staticmethod
+    def _init_check_path(*paths: Path):
+        for path in paths:
+            if re.search('[！@#￥%……&*（）—【】：；“‘”’《》，。？、\u4e00-\u9fff]', path.as_posix()):
+                raise ValueError(f'路径存在中文字符：{path.as_posix()}')
+
 
     def _init_set_QApp(self):
         app = QApplication.instance()

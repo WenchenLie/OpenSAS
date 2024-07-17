@@ -10,6 +10,7 @@ import time
 import multiprocessing
 import subprocess
 import datetime
+import traceback
 import numpy as np
 from pathlib import Path
 from typing import Literal
@@ -506,7 +507,9 @@ class WorkerThread(QThread):
                 elif flag == 'h':  # 超过最大计算时间
                     self.signal_add_warning.emit(text)
                 elif flag == 'i':  # 异常
-                    raise text
+                    error, tb = text
+                    print(tb)
+                    raise error
                 self.signal_set_progressBar.emit((f'已完成地震动数量：{finished_GM}', int(finished_GM / self.main.GM_N * 100)))
                 if finished_GM == self.main.GM_N:
                     break
@@ -1222,7 +1225,8 @@ def run_single_IDA_py(
             queue.put(message)
             return
     except Exception as e:
-        queue.put(('i', e))
+        tb = traceback.format_exc()
+        queue.put(('i', (e, tb)))
 
 def run_single_IDA_tcl(
     queue: multiprocessing.Queue,
@@ -1365,7 +1369,8 @@ def run_single_IDA_tcl(
             queue.put(message)
             return
     except Exception as e:
-        queue.put(('i', e))
+        tb = traceback.format_exc()
+        queue.put(('i', (e, tb)))
 
 def run_single_th(
     queue: multiprocessing.Queue,
@@ -1481,7 +1486,8 @@ def run_single_th(
         message = ('b', f'{gm_name}完成_{s}\n')
         queue.put(message)
     except Exception as e:
-        queue.put(('i', e))
+        tb = traceback.format_exc()
+        queue.put(('i', (e, tb)))
 
 
 class HiddenPrints:
