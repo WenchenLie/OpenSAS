@@ -41,14 +41,14 @@ def run():
     # model.select_ground_motions(['th2'], suffix='.th')
     T1 = 1.242
     # model.scale_ground_motions('data/DBE_AS.txt', method='a', para=None, plot=True, SF_code=1)  # 只有跑时程需要定义
-    model.set_running_parameters(Output_dir=r'H:\MRF_results\test\MRF4S_AS_CP', fv_duration=0, display=True, auto_quit=False)
+    model.set_running_parameters(Output_dir=r'H:\MRF_results\test\MRF4S_AS_PO', fv_duration=0, display=True, auto_quit=False)
     # model.run_time_history(print_result=False, parallel=11)
-    model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=20, print_result=False)
-    # model.run_pushover(0.1, print_result=True)
+    # model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=20, print_result=False)
+    model.run_pushover(0.1, print_result=True)
     # cp_path = np.loadtxt('data/cyclic_pushover_path.txt').tolist()
     # cp_path = [0, 0.02, -0.02, 0]
     # model.run_cyclic_pushover(cp_path, print_result=True)
-    # QuakeReadPushover('H:/RCF_results/test/STKO_6SRCF')
+    QuakeReadPushover(r'H:\MRF_results\test\MRF4S_AS_PO')
 
 
 def data_processing():

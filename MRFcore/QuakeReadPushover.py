@@ -15,7 +15,7 @@ def QuakeReadPushover(folder: Path):
             weight += data[9, 1]
             shear += -data[:, 0]
     shear_norm = shear / weight
-    print('最大剪力 =', max(shear * weight))
+    print('最大剪力 =', max(shear))
     print('weight =', weight)
     plt.subplot(121)
     plt.plot(SDR * 100, shear_norm)
@@ -29,6 +29,7 @@ def QuakeReadPushover(folder: Path):
     plt.ylabel('Base shear [kN]')
     plt.xlim(0, 10)
     # plt.ylim(0)
+    plt.tight_layout()
     plt.show()
 
 
