@@ -29,27 +29,21 @@ class DataProcessing:
     g = 9810
     span = 3  # 跨数
     
-    def __init__(
-            self, root: str | Path,
+    def __init__(self,
+            root: str | Path,
             max_mode: int=None,
-            gm_file: str | Path=Path(__file__).parent.parent/'GMs',
-            gm_suffix='.txt',
             attached_opju: str | Path=None):
         """基于计算后的结果文件夹提取计算结果
 
         Args:
             root (str | Path): 要读取的文件夹的路径
-            check (bool, optional): 是否检查数据，默认True
             max_mode (int, optional): 读取的最大模态数，默认None
-            gm_suffix (str, optional): 地震动文件的后缀，默认'.txt'
             attached_opju (str | Path, optional): origin文件路径，若给定则数据将写入到改文件，若不指定则将创建一个
         """
 
         self.skip = False
         self.max_mode = max_mode
         self.root = Path(root)
-        self.gm_file = Path(gm_file)
-        self.gm_suffix = gm_suffix
         if attached_opju:
             attached_opju = Path(attached_opju)
             if not attached_opju.suffix == '.opju':
@@ -375,34 +369,33 @@ class DataProcessing:
         return th, t
 
     def _read_PFA(self, print_result: bool):
-        """读取楼层加速度包络，屋顶加速度时程"""
-        logger.info('正在读取楼层加速度...')
+        """读取楼层绝对加速度包络，屋顶加速度时程"""
+        logger.info('正在读取楼层绝对加速度...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
             gm_name = self.GM_names[idx_gm]
             num =  1
             print(f'    正在读取{gm_name}楼层加速度...({idx_gm+1}/{self.GM_N})     \r', end='')
-            a_gm, t_gm = self._get_gm(self.gm_file, gm_name, self.gm_suffix)  # 输入地震动的时程及时间序列
             while True:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
                 folder = self.root / subfolder
+                a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
                 PFA = np.zeros(self.N)
                 if not Path.exists(folder):
                     break
                 t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
-                roof_a_base = self._uniform_time_seires(t_gm, a_gm, t)
                 for story in range(1, self.N + 1):
                     # 遍历楼层
-                    data = np.loadtxt(folder / f'RFA{story+1}.out')
-                    data = data - roof_a_base
+                    data = np.loadtxt(folder / f'RFA{story+1}.out')[10:]  # 楼层相对加速度
+                    data += a_base  # 转换为绝对加速度
                     data_max= max(abs(data)) / self.g
                     PFA[story - 1] = data_max
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层加速度(g).out', PFA)
-                roof_a = np.loadtxt(folder/f'RFA{self.N+1}.out')[11:] / self.g
-                roof_a = roof_a - roof_a_base[11:]
-                np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', roof_a)
+                a_roof = np.loadtxt(folder/f'RFA{self.N+1}.out')[10:] / self.g  # 屋顶相对加速度
+                a_roof += a_base  # 屋顶绝对加速度
+                np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', a_roof)
                 num += 1
                 if self.running_case == 'TH':
                     break
@@ -431,13 +424,12 @@ class DataProcessing:
 
 
     def _read_PFV(self, print_result: bool):
-        """读取楼层速度"""
-        logger.info('正在读取楼层速度...')
+        """读取楼层相对速度"""
+        logger.info('正在读取楼层相对速度...')
         for idx_gm in range(self.GM_N):
             # 遍历地震动
             gm_name = self.GM_names[idx_gm]
             num =  1
-            a_gm, t_gm = self._get_gm(self.gm_file, gm_name, self.gm_suffix)  # 输入地震动的时程及时间序列
             print(f'    正在读取{gm_name}楼层速度...({idx_gm+1}/{self.GM_N})     \r', end='')
             while True:
                 # 遍历每个动力增量
@@ -446,20 +438,15 @@ class DataProcessing:
                 PFV = np.zeros(self.N)
                 if not Path.exists(folder):
                     break
-                t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
-                roof_a_base = self._uniform_time_seires(t_gm, a_gm, t)
-                roof_v_base = self._get_v(roof_a_base, t)
                 for story in range(1, self.N + 1):
                     # 遍历楼层
                     data = np.loadtxt(folder / f'RFV{story+1}.out')
-                    data = data - roof_v_base
-                    data_max= max(abs(data))
+                    data_max = max(abs(data))
                     PFV[story - 1] = data_max
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层速度.out', PFV)
-                roof_v = np.loadtxt(folder/f'RFV{self.N+1}.out')[11:]
-                roof_v = roof_v - roof_v_base[11:]
-                np.savetxt(self.root_out/subfolder/'屋顶速度时程(绝对).out', roof_v)
+                v_roof = np.loadtxt(folder/f'RFV{self.N+1}.out')[11:]
+                np.savetxt(self.root_out/subfolder/'屋顶速度时程(相对).out', v_roof)
                 num += 1
                 if self.running_case == 'TH':
                     break

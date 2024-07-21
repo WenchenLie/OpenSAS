@@ -1,6 +1,6 @@
 """
 多层钢框架、混凝土框架OpenSees模型分析类
-作者：列文琛
+作者：Wenchen Lie
 更新：2024.03.10
 更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
 更新：2024-04-12，增加多进程并行计算
@@ -40,7 +40,7 @@ class MRF:
     # (1) 代码仅支持Windows系统
     # (2) 导入的地震动、反应谱单位均默认为g
 
-    format_version = '2.0'
+    format_version = '2.1'
     cwd = Path().cwd()
     dir_gm = cwd / 'GMs'
     dir_model = cwd / 'models'
@@ -178,15 +178,20 @@ class MRF:
         return f
 
 
-    def scale_ground_motions(self, path_spec_code: str, method: str,
-                             para: None | float | tuple | str,
-                             SF_code: float=1.0, save_SF=False,
-                             plot=True, save_unscaled_spec=False, save_scaled_spec=False):
+    def scale_ground_motions(self,
+            method: str,
+            para: None | float | tuple | str,
+            path_spec_code: str | None=None,
+            SF_code: float=1.0,
+            save_SF=False,
+            plot=True,
+            save_unscaled_spec=False,
+            save_scaled_spec=False
+        ):
         """缩放地震动，仅运行时程分析前需要调用，
         如果运行IDA或者Pushover，可以不调用。  
 
         Args:
-            path_spec_code (str): 目标谱的文件路径，文件应包含两列数据，为周期和加速度谱值  
             method (str): 地震动的缩放方法，为'a'-'g'：  
             * [a] 按Sa(T=0)匹配反应谱, pare=None  
             * [b] 按Sa(T=Ta)匹配反应谱, para=Ta  
@@ -200,6 +205,7 @@ class MRF:
             * [j] 指定Sa,avg(Ta~Tb), para=(Ta, Tb, Sa,avg)\n
             分别代表n条地震动的缩放系数  
             para: 地震动缩放所需参数，与`method`的取值有关  
+            path_spec_code (str, optional): 目标谱的文件路径，文件应包含两列数据，为周期和加速度谱值，默认None  
             SF_code (float, optional): 读取目标谱时将目标谱乘以一个缩放系数，默认为1  
             save (bool, optional): 是否保存缩放后的缩放系数(将保存至temp文件夹，
             可以作为`method`取'g'时`para`参数对应的文件路径，默认为False  
@@ -209,14 +215,14 @@ class MRF:
         """
         self.method = method
         self.th_para = para
-        if path_spec_code:
+        if path_spec_code is not None:
             data = np.loadtxt(path_spec_code)
             T = data[:, 0]
             Sa_code = data[:, 1] * SF_code
             Sv_code = Sa_code * T / (2 * pi)
             Sd_code = Sa_code * (T / (2 * pi)) ** 2
         else:
-            T = np.arange(0, 6.02, 0.01)
+            T = np.arange(0, 6.01, 0.01)
             Sa_code = None
             Sv_code = None
             Sd_code = None
@@ -235,16 +241,18 @@ class MRF:
             print(f'正在缩放地震动...({idx+1}/{self.GM_N})     \r', end='')
             th = np.loadtxt(self.dir_gm / f'{gm_name}{self.suffix}')
             RSA, RSV, RSD = Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
-            th = np.loadtxt(self.dir_gm / f'{gm_name}{self.suffix}')
-            RSA, RSV, RSD = Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
             self.GM_RSA[idx] = RSA
             self.GM_RSV[idx] = RSV
             self.GM_RSD[idx] = RSD    
             if method == 'a':
+                if path_spec_code is None:
+                    raise ValueError('Argument `path_spec_code` should be given')
                 T0 = 0
                 SF = self.Sa(T, Sa_code, T0) / self.Sa(T, RSA, T0)
                 self.GM_SF.append(SF)
             elif method == 'b':
+                if path_spec_code is None:
+                    raise ValueError('Argument `path_spec_code` should be given')
                 T0 = para
                 if is_print:
                     self.logger.info(f'Sa(T1) = {self.Sa(T, RSA, T0)}')
@@ -252,6 +260,8 @@ class MRF:
                 SF = self.Sa(T, Sa_code, T0) / self.Sa(T, RSA, T0)
                 self.GM_SF.append(SF)
             elif method == 'c':
+                if path_spec_code is None:
+                    raise ValueError('Argument `path_spec_code` should be given')
                 T1, T2 = para
                 idx1, idx2 = self.Sa(T, RSA, T1, True)[1], self.Sa(T, RSA, T2, True)[1]
                 init_SF = 1.0  # 初始缩放系数
@@ -269,6 +279,8 @@ class MRF:
             elif method == 'g':
                 SF = SFs[idx] 
             elif method == 'h':
+                if path_spec_code is None:
+                    raise ValueError('Argument `path_spec_code` should be given')
                 Sa_i_code = []
                 Sa_i = []
                 T1, T2 = para
@@ -292,14 +304,13 @@ class MRF:
                 Sa_gm_avg = self.geometric_mean(RSA[(Ta <= T) & (T <= Tb)])
                 SF = Sa_target / Sa_gm_avg
             else:
-                self.logger.error('"method"参数错误！')
-                raise ValueError('"method"参数错误！')
+                self.logger.error('`method`参数错误！')
+                raise ValueError('`method`参数错误！')
             self.scaled_GM_RSA[idx] = RSA * SF
             self.scaled_GM_RSV[idx] = RSV * SF
             self.scaled_GM_RSD[idx] = RSD * SF
             self.GM_SF.append(SF)
             if save_SF:
-                np.savetxt(self.dir_temp / 'GM_SFs.txt', self.GM_SF)  # 保存缩放系数
                 np.savetxt(self.dir_temp / 'GM_SFs.txt', self.GM_SF)  # 保存缩放系数
         if save_unscaled_spec:
             data_RSA = np.zeros((len(T), self.GM_N + 1))
@@ -371,13 +382,17 @@ class MRF:
             self.logger.info(f'已保存缩放反应谱至temp文件夹')
         plt.subplot(131)
         if method == 'a':
-            plt.scatter(0, Sa_code[0], color='blue', zorder=99999)
+            plt.scatter(0, Sa_code[0], color='red', zorder=99999)
         elif method == 'b':
-            plt.scatter(T0, self.Sa(T, Sa_code, T0), color='blue', zorder=99999)
+            plt.scatter(T0, self.Sa(T, Sa_code, T0), color='red', zorder=99999)
         elif method == 'c':
-            plt.scatter(para, [self.Sa(T, Sa_code, para[0]), self.Sa(T, Sa_code, para[1])], color='blue', zorder=99999)
+            plt.scatter(para, [self.Sa(T, Sa_code, para[0]), self.Sa(T, Sa_code, para[1])], color='red', zorder=99999)
         elif method == 'd':
-            plt.scatter(0, PGA, color='blue', zorder=99999)
+            plt.scatter(0, PGA, color='red', zorder=99999)
+        elif method == 'h':
+            plt.scatter(para, [self.Sa(T, Sa_code, para[0]), self.Sa(T, Sa_code, para[1])], color='red', zorder=99999)
+        elif method == 'i':
+            plt.scatter(para[0], para[1], color='red', zorder=99999)
         for i in range(self.GM_N):
             plt.subplot(131)
             plt.plot(T, self.scaled_GM_RSA[i], color='grey')
@@ -411,8 +426,8 @@ class MRF:
 
     # TODO: 后处理暂不支持从pkl读取地震动
     def records_from_pickle(self,
-        pkl_file: Path | str,
-        scale: Literal['scaled', 'unscaled', 'normalised']='scaled'
+            pkl_file: Path | str,
+            scale: Literal['scaled', 'unscaled', 'normalised']='scaled'
         ) -> None:
         """从pickle导入并缩放地震动，其中pickle文件从GroungMotons项目获得
 
