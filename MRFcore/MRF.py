@@ -67,8 +67,9 @@ class MRF:
         if script not in ['tcl', 'py']:
             raise ValueError('参数`script`应为"tcl"或"py"')
         self.script = script
-        if not (self.dir_model / (f'{model_name}.{script}')).exists():
-            logger.error(f'无法找到模型`{model_name}.{script}`！')
+        model_file = self.dir_model / f'{model_name}.{script}'
+        if not model_file.exists():
+            logger.error(f'无法找到模型 ({model_file.as_posix()})')
             raise ValueError('【Error】无法找到模型！')
         with open(self.dir_model / (f'{model_name}.{script}'), 'r') as f:
             self.script_text = f.read()
