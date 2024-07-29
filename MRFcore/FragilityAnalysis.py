@@ -198,26 +198,56 @@ class FragilityAnalysis():
                 IM = np.loadtxt(folder/'Sa.out')  # 地震动强度指标
                 IM = round(float(IM), 6)
                 line.append(IM)
-                IDR = np.loadtxt(folder/'层间位移角.out')  # 层间位移角
-                line.append(np.max(np.abs(IDR)))
-                DCF = np.loadtxt(folder/'DCF.out')  # 层间变形集中系数
-                line.append(np.max(np.abs(DCF)))
-                PFV = np.loadtxt(folder/'层速度.out')  # 层间相对速度
-                line.append(np.max(np.abs(PFV)))
-                PFA = np.loadtxt(folder/'层加速度(g).out')  # 层间相对加速度
-                line.append(np.max(np.abs(PFA)))
-                ResIDR = np.loadtxt(folder/'残余层间位移角.out')  # 残余层间位移角
-                line.append(np.max(np.abs(ResIDR)))
-                RoofIDR = np.loadtxt(folder/'屋顶层间位移角.out')  # 屋顶层间位移角
-                line.append(np.max(np.abs(RoofIDR)))
-                Shear = np.loadtxt(folder/'楼层剪力(kN).out')  # 层间剪力
-                line.append(np.max(np.abs(Shear)))
-                beamHinge = np.loadtxt(folder/'梁铰变形.out')  # 梁铰变形
-                line.append(np.max(np.abs(beamHinge)))
-                colHinge = np.loadtxt(folder/'柱铰变形.out')  # 柱铰变形
-                line.append(np.max(np.abs(colHinge)))
-                panelZone = np.loadtxt(folder/'节点域变形.out')  # 节点域变形
-                line.append(np.max(np.abs(panelZone)))
+                if (folder/'层间位移角.out').exists():
+                    IDR = np.loadtxt(folder/'层间位移角.out')  # 层间位移角
+                    line.append(np.max(np.abs(IDR)))
+                else:
+                    line.append(0)
+                if (folder/'DCF.out').exists():
+                    DCF = np.loadtxt(folder/'DCF.out')  # 层间变形集中系数
+                    line.append(np.max(np.abs(DCF)))
+                else:
+                    line.append(0)
+                if (folder/'层速度.out').exists():
+                    PFV = np.loadtxt(folder/'层速度.out')  # 层间相对速度
+                    line.append(np.max(np.abs(PFV)))
+                else:
+                    line.append(0)
+                if (folder/'层加速度(g).out').exists():
+                    PFA = np.loadtxt(folder/'层加速度(g).out')  # 层间相对加速度
+                    line.append(np.max(np.abs(PFA)))
+                else:
+                    line.append(0)
+                if (folder/'残余层间位移角.out').exists():
+                    ResIDR = np.loadtxt(folder/'残余层间位移角.out')  # 残余层间位移角
+                    line.append(np.max(np.abs(ResIDR)))
+                else:
+                    line.append(0)
+                if (folder/'屋顶层间位移角.out').exists():
+                    RoofIDR = np.loadtxt(folder/'屋顶层间位移角.out')  # 屋顶层间位移角
+                    line.append(np.max(np.abs(RoofIDR)))
+                else:
+                    line.append(0)
+                if (folder/'楼层剪力(kN).out').exists():
+                    Shear = np.loadtxt(folder/'楼层剪力(kN).out')  # 层间剪力
+                    line.append(np.max(np.abs(Shear)))
+                else:
+                    line.append(0)
+                if (folder/'梁铰变形.out').exists():
+                    beamHinge = np.loadtxt(folder/'梁铰变形.out')  # 梁铰变形
+                    line.append(np.max(np.abs(beamHinge)))
+                else:
+                    line.append(0)
+                if (folder/'柱铰变形.out').exists():
+                    colHinge = np.loadtxt(folder/'柱铰变形.out')  # 柱铰变形
+                    line.append(np.max(np.abs(colHinge)))
+                else:
+                    line.append(0)
+                if (folder/'节点域变形.out').exists():
+                    panelZone = np.loadtxt(folder/'节点域变形.out')  # 节点域变形
+                    line.append(np.max(np.abs(panelZone)))
+                else:
+                    line.append(0)
                 if self.additional_items:
                     for item in self.additional_items:
                         if not (folder/f'{item}.out').exists():

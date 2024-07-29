@@ -380,10 +380,10 @@ class DataProcessing:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
                 folder = self.root / subfolder
-                a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
-                PFA = np.zeros(self.N)
                 if not Path.exists(folder):
                     break
+                a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
+                PFA = np.zeros(self.N)
                 t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
                 for story in range(1, self.N + 1):
                     # 遍历楼层
