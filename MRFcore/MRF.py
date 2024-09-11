@@ -21,7 +21,7 @@ from pathlib import Path
 from loguru import logger
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox
-from SeismicUtils import Records
+from seismicutils import Records
 
 from .Win import MyWin
 from .Spectrum import Spectrum
