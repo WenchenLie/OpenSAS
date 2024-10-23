@@ -162,13 +162,14 @@ class FragilityAnalysis():
 
     def _check_file(self):
         # 数据初步检查
-        list_ = ['ground_motions', 'N', 'running_case']
+        list_ = ['ground_motions', 'Nstory', 'Nbay', 'running_case']
         for file in list_:
             if not Path.exists(self.root/f'{file}.dat'):
                 raise ValueError('【Error】未找到{}'.format(self.root/f'{file}.dat'))
         self.GM_names = np.loadtxt(self.root/'ground_motions.dat', dtype=str, ndmin=1).tolist()  # 地震动名
         self.GM_N = len(self.GM_names)
-        self.N = int(np.loadtxt(self.root/'N.dat'))  # 楼层数
+        self.Nstory = int(np.loadtxt(self.root/'Nstory.dat'))  # 楼层数
+        self.Nbay = int(np.loadtxt(self.root/'Nbay.dat'))  # 跨数
         with open(self.root/'notes.dat', 'r') as f:
             self.notes = f.read()
         self.running_case = str(np.loadtxt(self.root / 'running_case.dat', dtype=str))
@@ -504,8 +505,8 @@ class FragilityAnalysis():
         spec_data = np.loadtxt(MCE_spec)
         spec_data[:, 1] *= SF_spec
         Sa_MCE = get_y(spec_data[:, 0], spec_data[:, 1], T1)  # 一阶周期对应的MCE谱谱值
-        CMR = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fit['IDR'], 0.5) / Sa_MCE
-        print(f'倒塌储备系数(CMR)：{CMR:.3f}')
+        self.CMR = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fit['IDR'], 0.5) / Sa_MCE
+        print(f'倒塌储备系数(CMR)：{self.CMR:.3f}')
 
 
     def save_data(self, output_path: str | Path):
@@ -594,6 +595,7 @@ class FragilityAnalysis():
             if DM_name in self.info.keys():
                 with open(output_path / f'概率特征_{DM_name}.out', 'w') as f:
                     f.write(self.info[DM_name])
+            np.savetxt(output_path / f'CMR.out', [self.CMR], fmt='%.3f')
         logger.success('已保存数据')
 
 

@@ -27,7 +27,6 @@ logger.add(
 
 class DataProcessing:
     g = 9810
-    span = 3  # 跨数
     
     def __init__(self,
             root: str | Path,
@@ -53,13 +52,14 @@ class DataProcessing:
 
     def _check_data(self):
         """检查数据文件是否齐全"""
-        list_ = ['ground_motions', 'N', 'running_case']
+        list_ = ['ground_motions', 'Nstory', 'Nbay', 'running_case']
         for file in list_:
             if not Path.exists(self.root/f'{file}.dat'):
                 raise ValueError(f'【Error】未找到{self.root}\\{file}.dat')
         self.GM_names = np.loadtxt(self.root/'ground_motions.dat', dtype=str, ndmin=1).tolist()  # 地震动名
         self.GM_N = len(self.GM_names)
-        self.N = int(np.loadtxt(self.root/'N.dat'))  # 楼层数
+        self.Nstory = int(np.loadtxt(self.root/'Nstory.dat'))  # 楼层数
+        self.Nbay = int(np.loadtxt(self.root/'Nbay.dat'))  # 楼层数
         with open(self.root/'notes.dat', 'r') as f:
             self.notes = f.read()
         with open(self.root / 'running_case.dat', 'r') as f:
@@ -113,7 +113,8 @@ class DataProcessing:
                 logger.error('cover输入值错误')
                 raise ValueError('【Error】cover输入值错误')
         np.savetxt(self.root_out/'ground_motions.dat', self.GM_names, fmt='%s')
-        np.savetxt(self.root_out/'N.dat', np.array([self.N]))
+        np.savetxt(self.root_out/'Nstory.dat', np.array([self.Nstory], dtype=int))
+        np.savetxt(self.root_out/'Nbay.dat', np.array([self.Nbay], dtype=int))
         with open(self.root_out/'notes.dat', 'w') as f:
             f.write(self.notes)
         with open(self.root_out/'running_case.dat', 'w') as f:
@@ -193,7 +194,7 @@ class DataProcessing:
     def _read_mode(self, print_result: bool):
         """读取模态结果"""
         logger.info('正在读取模态结果...')
-        mode = np.zeros((self.N, self.N))  # 每行代表每阶振型
+        mode = np.zeros((self.Nstory, self.Nstory))  # 每行代表每阶振型
         # self.mode的第i行j列为第i阶振型第j层位移
         if self.running_case == 'IDA':
             subFolder = f'{self.GM_names[0]}_1'
@@ -206,7 +207,7 @@ class DataProcessing:
         else:
             raise ValueError(f'未知的`running_case`类型：{self.running_case}')
         T = np.loadtxt(self.root / subFolder / 'Period.out')
-        for i in range(self.N):
+        for i in range(self.Nstory):
             mode[i] = np.loadtxt(self.root / subFolder / f'mode{i+1}.out')
             np.savetxt(self.root_out/f'第{i+1}振型.out', mode[i])
             if i + 1 == self.max_mode:
@@ -256,12 +257,12 @@ class DataProcessing:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
                 folder = self.root / subfolder
-                IDR = np.zeros(self.N + 1)
-                IDR_res = np.zeros(self.N + 1)
+                IDR = np.zeros(self.Nstory + 1)
+                IDR_res = np.zeros(self.Nstory + 1)
                 if not Path.exists(folder):
                     break
                 IDR_roof = np.array([max(abs(np.loadtxt(folder / f'SDR_Roof.out')))])  # 屋顶位移角
-                for story in range(1, self.N + 1):
+                for story in range(1, self.Nstory + 1):
                     # 遍历楼层
                     data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]  # 层间位移角
                     data_max= max(abs(data))
@@ -273,7 +274,7 @@ class DataProcessing:
                 np.savetxt(self.root_out/subfolder/'残余层间位移角.out', IDR_res)
                 np.savetxt(self.root_out/subfolder/'屋顶层间位移角.out', IDR_roof)
                 np.savetxt(self.root_out/subfolder/'DCF.out', max(IDR) / IDR_roof)  # 层间变形集中系数
-                roof_d = pd.read_csv(folder/f'Disp{self.N+1}.out', header=None).to_numpy()[11:, 0]
+                roof_d = pd.read_csv(folder/f'Disp{self.Nstory+1}.out', header=None).to_numpy()[11:, 0]
                 np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d, fmt='%.4f')
                 num += 1
                 if self.running_case == 'TH':
@@ -308,10 +309,10 @@ class DataProcessing:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
                 folder = self.root / subfolder
-                CIDR = np.zeros(self.N + 1)
+                CIDR = np.zeros(self.Nstory + 1)
                 if not Path.exists(folder):
                     break
-                for story in range(1, self.N + 1):
+                for story in range(1, self.Nstory + 1):
                     # 遍历楼层
                     data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]
                     data_c= self._get_cumulative_results(data)
@@ -335,10 +336,10 @@ class DataProcessing:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
                 folder = self.root / subfolder
-                shear = np.zeros(self.N)
+                shear = np.zeros(self.Nstory)
                 if not Path.exists(folder):
                     break
-                for story in range(1, self.N + 1):
+                for story in range(1, self.Nstory + 1):
                     # 遍历楼层
                     shear_story = None
                     for file in folder.iterdir():
@@ -383,9 +384,9 @@ class DataProcessing:
                 if not Path.exists(folder):
                     break
                 a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
-                PFA = np.zeros(self.N)
+                PFA = np.zeros(self.Nstory)
                 t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
-                for story in range(1, self.N + 1):
+                for story in range(1, self.Nstory + 1):
                     # 遍历楼层
                     data = np.loadtxt(folder / f'RFA{story+1}.out')[10:]  # 楼层相对加速度
                     data += a_base  # 转换为绝对加速度
@@ -393,7 +394,7 @@ class DataProcessing:
                     PFA[story - 1] = data_max
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层加速度(g).out', PFA)
-                a_roof = np.loadtxt(folder/f'RFA{self.N+1}.out')[10:] / self.g  # 屋顶相对加速度
+                a_roof = np.loadtxt(folder/f'RFA{self.Nstory+1}.out')[10:] / self.g  # 屋顶相对加速度
                 a_roof += a_base  # 屋顶绝对加速度
                 np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', a_roof)
                 num += 1
@@ -435,17 +436,17 @@ class DataProcessing:
                 # 遍历每个动力增量
                 subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
                 folder = self.root / subfolder
-                PFV = np.zeros(self.N)
+                PFV = np.zeros(self.Nstory)
                 if not Path.exists(folder):
                     break
-                for story in range(1, self.N + 1):
+                for story in range(1, self.Nstory + 1):
                     # 遍历楼层
                     data = np.loadtxt(folder / f'RFV{story+1}.out')
                     data_max = max(abs(data))
                     PFV[story - 1] = data_max
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层速度.out', PFV)
-                v_roof = np.loadtxt(folder/f'RFV{self.N+1}.out')[11:]
+                v_roof = np.loadtxt(folder/f'RFV{self.Nstory+1}.out')[11:]
                 np.savetxt(self.root_out/subfolder/'屋顶速度时程(相对).out', v_roof)
                 num += 1
                 if self.running_case == 'TH':
@@ -471,17 +472,17 @@ class DataProcessing:
                 folder = self.root / subfolder
                 if not Path.exists(folder):
                     break
-                hinge_result = np.zeros((self.N, self.span * 2))
-                for story in range(1, self.N + 1):
+                hinge_result = np.zeros((self.Nstory, self.Nbay * 2))
+                for story in range(1, self.Nstory + 1):
                     # 遍历楼层
-                    for col in range(1, self.span + 2):
+                    for col in range(1, self.Nbay + 2):
                         # 遍历柱 1 ~ 柱数
                         if col == 1:
                             # 左边柱
                             theta_r = np.loadtxt(folder/f'BeamSpring{story+1}_{col}R.out')[:, 1]
                             theta_r = max(abs(theta_r))
                             hinge_result[story-1, 0] = theta_r
-                        elif col == self.span + 1:
+                        elif col == self.Nbay + 1:
                             # 右边柱
                             theta_l = np.loadtxt(folder/f'BeamSpring{story+1}_{col}L.out')[:, 1]
                             theta_l = max(abs(theta_l))
@@ -517,10 +518,10 @@ class DataProcessing:
                 folder = self.root / subfolder
                 if not Path.exists(folder):
                     break
-                hinge_result = np.zeros((self.N * 2, self.span + 1))
-                for story in range(1, self.N + 2):
+                hinge_result = np.zeros((self.Nstory * 2, self.Nbay + 1))
+                for story in range(1, self.Nstory + 2):
                     # 遍历楼层 1-5
-                    for col in range(1, self.span + 2):
+                    for col in range(1, self.Nbay + 2):
                         # 遍历柱 1-4
                         # M_l = np.loadtxt(folder/f'BeamSpring{story+1}{span}L_F.out')
                         # M_r = np.loadtxt(folder/f'BeamSpring{story+1}{span}R_F.out')
@@ -529,7 +530,7 @@ class DataProcessing:
                             theta_T = np.loadtxt(folder/f'ColSpring{story}_{col}T.out')[:, 1]
                             theta_T = max(abs(theta_T))
                             hinge_result[0, col-1] = theta_T
-                        elif story == self.N + 1:
+                        elif story == self.Nstory + 1:
                             # 顶层
                             theta_B = np.loadtxt(folder/f'ColSpring{story}_{col}B.out')[:, 1]
                             theta_B = max(abs(theta_B))
@@ -564,10 +565,10 @@ class DataProcessing:
                 folder = self.root / subfolder
                 if not Path.exists(folder):
                     break
-                hinge_result = np.zeros((self.N, self.span + 1))
-                for story in range(2, self.N + 2):
+                hinge_result = np.zeros((self.Nstory, self.Nbay + 1))
+                for story in range(2, self.Nstory + 2):
                     # 遍历楼层 2-5
-                    for col in range(1, self.span + 2):
+                    for col in range(1, self.Nbay + 2):
                         theta = np.loadtxt(folder/f'PZ{story}_{col}.out')[:, 1]
                         theta = max(abs(theta))
                         hinge_result[story-2, col-1] = theta
@@ -646,16 +647,16 @@ class DataProcessing:
         if abs(min(shear[:100])) > abs(max(shear[:100])):
             shear *= -1  # 将推覆方向始终设为正向
         # 各层位移
-        u = np.zeros((self.N, n))
-        for i in range(self.N):
+        u = np.zeros((self.Nstory, n))
+        for i in range(self.Nstory):
             u[i] = np.loadtxt(self.root/'pushover'/f'Disp{i+2}.out')[11:]
         # 层间位移角
-        IDR = np.zeros((self.N, n))
-        for i in range(self.N):
+        IDR = np.zeros((self.Nstory, n))
+        for i in range(self.Nstory):
             IDR[i] = np.loadtxt(self.root/'pushover'/f'SDR{i+1}.out')[11:]
         # 归一化楼层位移角(各层位移除以结构总高)
-        FDR = np.zeros((self.N, n))
-        for i in range(self.N):
+        FDR = np.zeros((self.Nstory, n))
+        for i in range(self.Nstory):
             FDR[i] = u[i] / H
         # 不同最大屋顶位移角时的最大层间位移角曲线
         step = 0
@@ -692,11 +693,11 @@ class DataProcessing:
             plt.xlim(0)
             plt.ylim(0)
             plt.subplot(122)
-            data = np.zeros((self.N + 1, len(FDR_lines) * 2))
+            data = np.zeros((self.Nstory + 1, len(FDR_lines) * 2))
             for i, FDR_line in enumerate(FDR_lines):
-                plt.plot(FDR_line * 100, np.arange(1, self.N + 2, 1), '-o', label=f'{round(FDR_step[i]*100, 0)}%')
+                plt.plot(FDR_line * 100, np.arange(1, self.Nstory + 2, 1), '-o', label=f'{round(FDR_step[i]*100, 0)}%')
                 data[:, i*2] = FDR_line * 100
-                data[:, i*2+1] = np.arange(1, self.N + 2, 1)
+                data[:, i*2+1] = np.arange(1, self.Nstory + 2, 1)
             np.savetxt(self.root_out/'归一化屋顶位移曲线.txt', data)
             plt.legend()
             plt.xlabel('Nominal floor displacement (%)')
@@ -762,28 +763,28 @@ class DataProcessing:
             return
         if not Path(self.root_out/'结果统计').exists():
             Path.mkdir(self.root_out/'结果统计')
-        IDR = np.zeros((self.N + 1, self.GM_N))  # 最大层间位移角
-        IDR_stat = np.zeros((self.N + 1, 5))  # 均值，标准差，16,50,84分位数
+        IDR = np.zeros((self.Nstory + 1, self.GM_N))  # 最大层间位移角
+        IDR_stat = np.zeros((self.Nstory + 1, 5))  # 均值，标准差，16,50,84分位数
         IDRroof = np.zeros(self.GM_N)  # 屋顶层间位移角
         IDRroof_stat = np.zeros(5)  # 均值，标准差，16,50,84分位数
         DCF = np.zeros(self.GM_N)  # 层间位移角集中系数
         DCF_stat = np.zeros(5)  # 均值，标准差，16,50,84分位数
-        Shear = np.zeros((self.N, self.GM_N))  # 最大楼层剪力
-        Shear_stat = np.zeros((self.N, 5))  # 均值，标准差，16,50,84分位数
-        CIDR = np.zeros((self.N + 1, self.GM_N))  # 累积层间位移角
-        CIDR_stat = np.zeros((self.N + 1, 5))  # 均值，标准差，16,50,84分位数
-        PFV = np.zeros((self.N, self.GM_N))  # 最大层间位速度
-        PFV_stat = np.zeros((self.N, 5))  # 均值，标准差，16,50,84分位数
-        PFA = np.zeros((self.N, self.GM_N))  # 最大层加速度
-        PFA_stat = np.zeros((self.N, 5))  # 均值，标准差，16,50,84分位数
-        RIDR = np.zeros((self.N + 1, self.GM_N))  # 最大层间位移角
-        RIDR_stat = np.zeros((self.N + 1, 5))  # 均值，标准差，16,50,84分位数
-        beam_hinge = np.zeros((self.GM_N, self.N, self.span * 2))  # 梁铰变形
-        beam_hinge_stat = np.zeros((5, self.N, self.span * 2))
-        col_hinge = np.zeros((self.GM_N, self.N * 2, self.span + 1))  # 柱铰变形
-        col_hinge_stat = np.zeros((5, self.N * 2, self.span + 1))
-        panel_zone = np.zeros((self.GM_N, self.N, self.span + 1))  # 节点域变形
-        panel_zone_stat = np.zeros((5, self.N, self.span + 1))
+        Shear = np.zeros((self.Nstory, self.GM_N))  # 最大楼层剪力
+        Shear_stat = np.zeros((self.Nstory, 5))  # 均值，标准差，16,50,84分位数
+        CIDR = np.zeros((self.Nstory + 1, self.GM_N))  # 累积层间位移角
+        CIDR_stat = np.zeros((self.Nstory + 1, 5))  # 均值，标准差，16,50,84分位数
+        PFV = np.zeros((self.Nstory, self.GM_N))  # 最大层间位速度
+        PFV_stat = np.zeros((self.Nstory, 5))  # 均值，标准差，16,50,84分位数
+        PFA = np.zeros((self.Nstory, self.GM_N))  # 最大层加速度
+        PFA_stat = np.zeros((self.Nstory, 5))  # 均值，标准差，16,50,84分位数
+        RIDR = np.zeros((self.Nstory + 1, self.GM_N))  # 最大层间位移角
+        RIDR_stat = np.zeros((self.Nstory + 1, 5))  # 均值，标准差，16,50,84分位数
+        beam_hinge = np.zeros((self.GM_N, self.Nstory, self.Nbay * 2))  # 梁铰变形
+        beam_hinge_stat = np.zeros((5, self.Nstory, self.Nbay * 2))
+        col_hinge = np.zeros((self.GM_N, self.Nstory * 2, self.Nbay + 1))  # 柱铰变形
+        col_hinge_stat = np.zeros((5, self.Nstory * 2, self.Nbay + 1))
+        panel_zone = np.zeros((self.GM_N, self.Nstory, self.Nbay + 1))  # 节点域变形
+        panel_zone_stat = np.zeros((5, self.Nstory, self.Nbay + 1))
         def MyLoadtxt(path: Path, array: np.ndarray):
             try:
                 res = np.loadtxt(path)
@@ -875,40 +876,40 @@ class DataProcessing:
         panel_zone_stat[4] = np.percentile(panel_zone, 84, axis=0)
         # 保存结果
         columns = ['均值', '标准差', '16th', '50th', '84th']
-        IDR = pd.DataFrame(IDR, index=range(0, self.N + 1), columns=self.GM_names)
+        IDR = pd.DataFrame(IDR, index=range(0, self.Nstory + 1), columns=self.GM_names)
         IDRroof = pd.DataFrame([IDRroof], columns=self.GM_names)
         DCF = pd.DataFrame([DCF], columns=self.GM_names)
-        Shear = pd.DataFrame(Shear, index=range(1, self.N + 1), columns=self.GM_names)
-        CIDR = pd.DataFrame(CIDR, index=range(0, self.N + 1), columns=self.GM_names)
-        PFV = pd.DataFrame(PFV, index=range(1, self.N + 1), columns=self.GM_names)
-        PFA = pd.DataFrame(PFA, index=range(1, self.N + 1), columns=self.GM_names)
-        RIDR = pd.DataFrame(RIDR, index=range(0, self.N + 1), columns=self.GM_names)
-        IDR_stat = pd.DataFrame(IDR_stat, index=range(0, self.N + 1), columns=columns)
+        Shear = pd.DataFrame(Shear, index=range(1, self.Nstory + 1), columns=self.GM_names)
+        CIDR = pd.DataFrame(CIDR, index=range(0, self.Nstory + 1), columns=self.GM_names)
+        PFV = pd.DataFrame(PFV, index=range(1, self.Nstory + 1), columns=self.GM_names)
+        PFA = pd.DataFrame(PFA, index=range(1, self.Nstory + 1), columns=self.GM_names)
+        RIDR = pd.DataFrame(RIDR, index=range(0, self.Nstory + 1), columns=self.GM_names)
+        IDR_stat = pd.DataFrame(IDR_stat, index=range(0, self.Nstory + 1), columns=columns)
         IDRroof_stat = pd.DataFrame([IDRroof_stat], columns=columns)
         DCF_stat = pd.DataFrame([DCF_stat], columns=columns)
-        Shear_stat = pd.DataFrame(Shear_stat, index=range(1, self.N + 1), columns=columns)
-        CIDR_stat = pd.DataFrame(CIDR_stat, index=range(0, self.N + 1), columns=columns)
-        PFV_stat = pd.DataFrame(PFV_stat, index=range(1, self.N + 1), columns=columns)
-        PFA_stat = pd.DataFrame(PFA_stat, index=range(1, self.N + 1), columns=columns)
-        RIDR_stat = pd.DataFrame(RIDR_stat, index=range(0, self.N + 1), columns=columns)
-        columns_beam = ['左', '右'] * self.span
-        beam_hinge_stat_mean = pd.DataFrame(beam_hinge_stat[0], index=range(1, self.N + 1), columns=columns_beam)
-        beam_hinge_stat_std = pd.DataFrame(beam_hinge_stat[1], index=range(1, self.N + 1), columns=columns_beam)
-        beam_hinge_stat_16th = pd.DataFrame(beam_hinge_stat[2], index=range(1, self.N + 1), columns=columns_beam)
-        beam_hinge_stat_50th = pd.DataFrame(beam_hinge_stat[3], index=range(1, self.N + 1), columns=columns_beam)
-        beam_hinge_stat_84th = pd.DataFrame(beam_hinge_stat[4], index=range(1, self.N + 1), columns=columns_beam)
-        index_col = sum([[f'{i}下', f'{i}上'] for i in range(1, self.N + 1)], [])
-        col_hinge_stat_mean = pd.DataFrame(col_hinge_stat[0], index=index_col, columns=range(1, self.span + 2))
-        col_hinge_stat_std = pd.DataFrame(col_hinge_stat[1], index=index_col, columns=range(1, self.span + 2))
-        col_hinge_stat_16th = pd.DataFrame(col_hinge_stat[2], index=index_col, columns=range(1, self.span + 2))
-        col_hinge_stat_50th = pd.DataFrame(col_hinge_stat[3], index=index_col, columns=range(1, self.span + 2))
-        col_hinge_stat_84th = pd.DataFrame(col_hinge_stat[4], index=index_col, columns=range(1, self.span + 2))
-        index_panel = range(1, self.N + 1)
-        panel_zone_stat_mean = pd.DataFrame(panel_zone_stat[0], index=index_panel, columns=range(1, self.span + 2))
-        panel_zone_stat_std = pd.DataFrame(panel_zone_stat[1], index=index_panel, columns=range(1, self.span + 2))
-        panel_zone_stat_16th = pd.DataFrame(panel_zone_stat[2], index=index_panel, columns=range(1, self.span + 2))
-        panel_zone_stat_50th = pd.DataFrame(panel_zone_stat[3], index=index_panel, columns=range(1, self.span + 2))
-        panel_zone_stat_84th = pd.DataFrame(panel_zone_stat[4], index=index_panel, columns=range(1, self.span + 2))
+        Shear_stat = pd.DataFrame(Shear_stat, index=range(1, self.Nstory + 1), columns=columns)
+        CIDR_stat = pd.DataFrame(CIDR_stat, index=range(0, self.Nstory + 1), columns=columns)
+        PFV_stat = pd.DataFrame(PFV_stat, index=range(1, self.Nstory + 1), columns=columns)
+        PFA_stat = pd.DataFrame(PFA_stat, index=range(1, self.Nstory + 1), columns=columns)
+        RIDR_stat = pd.DataFrame(RIDR_stat, index=range(0, self.Nstory + 1), columns=columns)
+        columns_beam = ['左', '右'] * self.Nbay
+        beam_hinge_stat_mean = pd.DataFrame(beam_hinge_stat[0], index=range(1, self.Nstory + 1), columns=columns_beam)
+        beam_hinge_stat_std = pd.DataFrame(beam_hinge_stat[1], index=range(1, self.Nstory + 1), columns=columns_beam)
+        beam_hinge_stat_16th = pd.DataFrame(beam_hinge_stat[2], index=range(1, self.Nstory + 1), columns=columns_beam)
+        beam_hinge_stat_50th = pd.DataFrame(beam_hinge_stat[3], index=range(1, self.Nstory + 1), columns=columns_beam)
+        beam_hinge_stat_84th = pd.DataFrame(beam_hinge_stat[4], index=range(1, self.Nstory + 1), columns=columns_beam)
+        index_col = sum([[f'{i}下', f'{i}上'] for i in range(1, self.Nstory + 1)], [])
+        col_hinge_stat_mean = pd.DataFrame(col_hinge_stat[0], index=index_col, columns=range(1, self.Nbay + 2))
+        col_hinge_stat_std = pd.DataFrame(col_hinge_stat[1], index=index_col, columns=range(1, self.Nbay + 2))
+        col_hinge_stat_16th = pd.DataFrame(col_hinge_stat[2], index=index_col, columns=range(1, self.Nbay + 2))
+        col_hinge_stat_50th = pd.DataFrame(col_hinge_stat[3], index=index_col, columns=range(1, self.Nbay + 2))
+        col_hinge_stat_84th = pd.DataFrame(col_hinge_stat[4], index=index_col, columns=range(1, self.Nbay + 2))
+        index_panel = range(1, self.Nstory + 1)
+        panel_zone_stat_mean = pd.DataFrame(panel_zone_stat[0], index=index_panel, columns=range(1, self.Nbay + 2))
+        panel_zone_stat_std = pd.DataFrame(panel_zone_stat[1], index=index_panel, columns=range(1, self.Nbay + 2))
+        panel_zone_stat_16th = pd.DataFrame(panel_zone_stat[2], index=index_panel, columns=range(1, self.Nbay + 2))
+        panel_zone_stat_50th = pd.DataFrame(panel_zone_stat[3], index=index_panel, columns=range(1, self.Nbay + 2))
+        panel_zone_stat_84th = pd.DataFrame(panel_zone_stat[4], index=index_panel, columns=range(1, self.Nbay + 2))
         IDR.to_csv(self.root_out/'结果统计'/'层间位移角.csv', encoding='ANSI', float_format='%.6f')
         IDRroof.to_csv(self.root_out/'结果统计'/'屋顶层间位移角.csv', encoding='ANSI', float_format='%.6f')
         DCF.to_csv(self.root_out/'结果统计'/'DCF.csv', encoding='ANSI', float_format='%.6f')

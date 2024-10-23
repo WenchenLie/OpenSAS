@@ -23,6 +23,10 @@ def QuakePlotHinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None
             raise ValueError('节点域铰位置参数有误')
         theta = np.loadtxt(folder/f'PZ{floor}_{axis}.out')[:, 1]
         M = np.loadtxt(folder/f'PZ{floor}_{axis}.out')[:, 0]
+    plt.plot(theta, M/1e6)
+    plt.xlabel('theta [rad]')
+    plt.ylabel('M [kN-m]')
+    plt.show()
     return theta, M / 1e6
 
 

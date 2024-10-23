@@ -49,14 +49,15 @@ class MRF:
     dir_terminal = cwd / 'OS_terminal'
     dir_subroutines = cwd / 'subroutines'
 
-    def __init__(self, model_name: str, N: int, script: Literal['tcl', 'py']='tcl', notes=''):
+    def __init__(self, model_name: str, Nstory: int, Nbay: int, script: Literal['tcl', 'py']='tcl', notes=''):
         """实例化分析模型
 
         Args:
-            model_name (str): 模型名称，应与tcl模型的文件名一致  
-            N (int): 结构层数  
-            notes (str, optional): 模型描述，默认为''  
-            script (Literal['tcl', 'py']): 脚本类型，tcl或py  
+            model_name (str): 模型名称，应与tcl模型的文件名一致
+            Nstory (int): 结构层数
+            Nbay (int): 跨数
+            notes (str, optional): 模型描述，默认为''
+            script (Literal['tcl', 'py']): 脚本类型，tcl或py
             logger (logger, optional): 在主函数中定义的日志对象
         """
         self.logger = logger
@@ -73,7 +74,8 @@ class MRF:
             raise ValueError('【Error】无法找到模型！')
         with open(self.dir_model / (f'{model_name}.{script}'), 'r') as f:
             self.script_text = f.read()
-        self.N = N  # 层数
+        self.Nstory = Nstory  # 层数
+        self.Nbay = Nbay  # 跨数
         self.notes = notes  # 模型说明
         self.GM_N = 0
         self.GM_names = []
@@ -522,8 +524,10 @@ class MRF:
             return
         with open(f'{self.Output_dir}/notes.dat', 'w') as f:
             f.write(self.notes)
-        with open(f'{self.Output_dir}/N.dat', 'w') as f:
-            f.write(str(self.N))
+        with open(f'{self.Output_dir}/Nstory.dat', 'w') as f:
+            f.write(str(self.Nstory))
+        with open(f'{self.Output_dir}/Nbay.dat', 'w') as f:
+            f.write(str(self.Nbay))
         with open(f'{self.Output_dir}/ground_motions.dat', 'w') as f:
             text = '\n'.join(self.GM_names)
             f.write(text)
