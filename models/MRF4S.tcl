@@ -126,10 +126,10 @@ node 10050104 [expr $Axis1 + 303.53] $Floor5;  node 10050205 [expr $Axis2 - 306.
 node 10030107 $Axis1 [expr $Floor3 + 0.5 * 4000.00];  node 10030207 $Axis2 [expr $Floor3 + 0.5 * 4000.00];  node 10030307 $Axis3 [expr $Floor3 + 0.5 * 4000.00];  node 10030407 $Axis4 [expr $Floor3 + 0.5 * 4000.00];
 
 # Beam splice ndoes
-
-
-
-
+node 10020208 [expr $Axis2 + 6100.00 / 2] $Floor2;
+node 10030208 [expr $Axis2 + 6100.00 / 2] $Floor3;
+node 10040208 [expr $Axis2 + 6100.00 / 2] $Floor4;
+node 10050208 [expr $Axis2 + 6100.00 / 2] $Floor5;
 
 
 # ----------------------------------- Elements -----------------------------------
@@ -144,10 +144,10 @@ element elasticBeamColumn 10030103 10030107 10040102 14451.58 $E [expr ($n+1)/$n
 element elasticBeamColumn 10040101 10040101 10050102 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10040201 10040201 10050202 15935.45 $E [expr ($n+1)/$n*986468478.67] 2;  element elasticBeamColumn 10040301 10040301 10050302 15935.45 $E [expr ($n+1)/$n*986468478.67] 2;  element elasticBeamColumn 10040401 10040401 10050402 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;
 
 # Beam elements
-element elasticBeamColumn 10020104 10020104 10020205 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10020204 10020204 10020305 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10020304 10020304 10020405 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;
-element elasticBeamColumn 10030104 10030104 10030205 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10030204 10030204 10030305 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10030304 10030304 10030405 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;
-element elasticBeamColumn 10040104 10040104 10040205 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10040204 10040204 10040305 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10040304 10040304 10040405 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;
-element elasticBeamColumn 10050104 10050104 10050205 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10050204 10050204 10050305 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10050304 10050304 10050405 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;
+element elasticBeamColumn 10020104 10020104 10020205 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10020211 10020204 10020208 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10020212 10020208 10020305 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10020304 10020304 10020405 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;
+element elasticBeamColumn 10030104 10030104 10030205 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10030211 10030204 10030208 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10030212 10030208 10030305 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;  element elasticBeamColumn 10030304 10030304 10030405 14451.58 $E [expr ($n+1)/$n*874085993.76] 2;
+element elasticBeamColumn 10040104 10040104 10040205 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10040211 10040204 10040208 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10040212 10040208 10040305 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10040304 10040304 10040405 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;
+element elasticBeamColumn 10050104 10050104 10050205 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10050211 10050204 10050208 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10050212 10050208 10050305 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;  element elasticBeamColumn 10050304 10050304 10050405 11354.82 $E [expr ($n+1)/$n*409571722.79] 2;
 
 # Panel zones
 # PanelNone Floor Axis X Y E mu fy_column A_stiff I_stiff d_col d_beam tp tf bf transfTag type_ position check ""
@@ -392,7 +392,7 @@ if {$analysis_type == "TH"} {
     set a0 [expr $zeta*2.0*$w1*$w3/($w1 + $w3)];
     set a1 [expr $zeta*2.0/($w1 + $w3)];
     set a1_mod [expr $a1*(1.0+$n)/$n];
-    set beam_Ids [list 10020104 10020204 10020304 10030104 10030204 10030304 10040104 10040204 10040304 10050104 10050204 10050304];
+    set beam_Ids [list 10020104 10020211 10020212 10020304 10030104 10030211 10030212 10030304 10040104 10040211 10040212 10040304 10050104 10050211 10050212 10050304];
     set column_Ids [list 10010101 10010201 10010301 10010401 10020101 10020201 10020301 10020401 10030102 10030103 10030202 10030203 10030302 10030303 10030402 10030403 10040101 10040201 10040301 10040401];
     set mass_Ids [list 11020104 11020204 11020304 11020404 11030104 11030204 11030304 11030404 11040104 11040204 11040304 11040404 11050104 11050204 11050304 11050404 10020500 10030500 10040500 10050500];
     # region 1 -ele {*}$beam_Ids -rayleigh 0.0 0.0 $a1_mod 0.0;
@@ -477,7 +477,7 @@ wipe all;
 #
 # Moment resisting frame model information
 # Frame name: MRF4S
-# Generation time: 2024-07-22 01:11:27.021741
+# Generation time: 2024-10-13 17:29:14.968794
 # All units are in [N, mm, t]
 # 
 # 
