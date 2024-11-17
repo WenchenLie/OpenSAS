@@ -478,7 +478,7 @@ class FragilityAnalysis():
             ax: Axes = axes[0]
             ax.loglog(hazard_curve[:, 0], hazard_curve[:, 1], '-o', label='USGS curve')
             x_temp = np.linspace(hazard_curve[0, 0], hazard_curve[-1, 0], 1000)
-            ax.loglog(x_temp, np.pow(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
+            ax.loglog(x_temp, np.power(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
             ax.grid(True)
             ax.set_xlabel('Sa')
             ax.set_ylabel(f'MAF of Sa')
@@ -529,6 +529,7 @@ class FragilityAnalysis():
             self.risk_text[EDP_type] = text_risk
             self.risk_EDP_hazard_curves[EDP_type] = np.array([x_EDP, gama]).T
             self.has_risk_data = True
+            plt.close()
 
 
     def visualization(self, plot_IDA_idx: int=None, plot: bool=True):
@@ -606,6 +607,7 @@ class FragilityAnalysis():
                 plt.tight_layout()
                 plt.show()
             self.figs[DM_name] = fig
+            plt.close()
 
 
     def collapse_evaluation(self, T1: float, MCE_spec: Path | str, SF_spec: float=1):
