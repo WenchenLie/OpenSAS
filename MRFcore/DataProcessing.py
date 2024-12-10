@@ -13,6 +13,8 @@ import originpro as op
 from originpro import WSheet
 from loguru import logger
 from scipy.interpolate import interp1d
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from MRFcore.WriteOrigin import WriteOrigin
 
@@ -606,17 +608,18 @@ class DataProcessing:
             raise ValueError('【Error】未找到交点-1')
 
     @staticmethod
-    def _get_ductility(x: np.ndarray, y: np.ndarray) -> float:
+    def _get_ductility(x: np.ndarray, y: np.ndarray  # NOTE: Newly added
+        ) -> tuple[float, float, float, float]:
         """获取推覆曲线的延性系数"""
         y_max = max(y)
         idx_y_max = np.argmax(y)
-        y_k = 0.4 * y_max
+        y_k = 0.2 * y_max  # 根据0.2倍最大基底剪力确定初始刚度
         x_k = DataProcessing._get_x(x, y, y_k)
         K = y_k / x_k  # 推覆曲线的初始刚度
         delta_yeff = y_max / K  # 屈服位移
         delta_u = DataProcessing._get_x(x[idx_y_max:], y[idx_y_max:], 0.8 * y_max)
         miu = delta_u / delta_yeff
-        return miu
+        return miu, K, delta_yeff, delta_u
         
     def read_pushover(self, H: float, FDR_step=[0.01*i for i in range(1, 11)], plot_result=True):
         """读取pushover结果，计算应力
@@ -634,16 +637,18 @@ class DataProcessing:
         n = len(Time)
         PO_path = self.root / 'pushover'
         # 底部重力
+        has_weight = False
         weight = 0
         for item in PO_path.iterdir():
             if item.is_file() and 'Support' in str(item):
+                has_weight = True
                 weight += np.loadtxt(item)[10, 1] / 1000
         print(f'weight = {weight:.3f} kN')
         # 底部剪力
         shear = np.zeros(n)
         for item in PO_path.iterdir():
             if item.is_file() and 'Support' in str(item):
-                shear += np.loadtxt(item)[11:, 0]
+                shear += np.loadtxt(item)[11:, 0] / 1000  # 剪力单位转换为kN
         if abs(min(shear[:100])) > abs(max(shear[:100])):
             shear *= -1  # 将推覆方向始终设为正向
         # 各层位移
@@ -671,40 +676,63 @@ class DataProcessing:
                     break
         # 推覆曲线
         x_pushover = FDR[-1] * 100
-        if weight:
-            y_pushover = shear / weight
-            label = 'Norminal base shear force'
+        y_pushover = shear
+        if has_weight:
+            y_pushover_norm = shear / weight
         else:
-            y_pushover = shear
-            label = 'Base shear force (kN)'
-        curve_pushover = np.array([x_pushover, y_pushover]).T
-        ductility = self._get_ductility(x_pushover, y_pushover)
-        np.savetxt(self.root_out/'屋顶位移角-基底剪力.txt', curve_pushover)
+            y_pushover_norm = shear
+        curve_pushover = np.array([x_pushover, shear]).T
+        if has_weight:
+            curve_pushover_norm = np.array([x_pushover, y_pushover_norm]).T
+        ductility, K, delta_yeff, delta_u = self._get_ductility(x_pushover, y_pushover)
+        print(f'delta_yeff = {delta_yeff:.3f}, delta_u = {delta_u:.3f}')
+        np.savetxt(self.root_out/'屋顶位移角(%)-基底剪力(kN).txt', curve_pushover)
+        if has_weight:
+            np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', curve_pushover_norm)
+        else:
+            open(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', 'w')
         np.savetxt(self.root_out/'延性系数.txt', np.array([ductility]), fmt='%.6f')
         print(f'最大基底剪力：{max(y_pushover):.3f}')
         print(f'延性系数：{ductility:.3f}')
         # 画图
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+        ax: Axes = axes[0]
+        ax.plot([0, max(y_pushover) / K], [0, max(y_pushover)], color='gray', ls='--')  # 初始刚度曲线
+        ax.hlines(0.8 * max(y_pushover), xmin=0, xmax=max(x_pushover), color='gray', linestyles='--')  # 0.8倍最大基底剪力线
+        ax.hlines(max(y_pushover), xmin=0, xmax=max(x_pushover), color='gray', linestyles='--')  # 0.8倍最大基底剪力线
+        ax.vlines(delta_yeff, ymin=0, ymax=delta_yeff * K, color='gray', linestyles='--')  # 屈服位移线
+        ax.vlines(delta_u, ymin=0, ymax=0.8 * max(y_pushover), color='gray', linestyles='--')  # 0.8倍基底剪力对应的位移
+        ax.plot(x_pushover, y_pushover)
+        ax.set_xlabel('Roof drift (%)')
+        ax.set_ylabel('Shear force (kN)')
+        ax.set_title('Roof drift - shear force')
+        ax.set_xlim(0)
+        ax.set_ylim(0)
+        if has_weight:
+            # 设置右侧y轴
+            ax2 = ax.twinx()
+            left_ticks = ax.get_yticks()
+            right_ticks = left_ticks / weight
+            ax2.set_yticks(right_ticks)
+            ax2.set_ylim(ax.get_ylim()[0] / weight, ax.get_ylim()[1] / weight)
+            ax2.set_ylabel('Norm. shear')
+            ax2.tick_params(axis='y')
+        ax = axes[1]
+        data = np.zeros((self.Nstory + 1, len(FDR_lines) * 2))
+        for i, FDR_line in enumerate(FDR_lines):
+            ax.plot(FDR_line * 100, np.arange(1, self.Nstory + 2, 1), '-o', label=f'{round(FDR_step[i]*100, 0)}%')
+            data[:, i*2] = FDR_line * 100
+            data[:, i*2+1] = np.arange(1, self.Nstory + 2, 1)
+        np.savetxt(self.root_out/'归一化屋顶位移曲线.txt', data)
+        ax.legend()
+        ax.set_xlabel('Nominal floor displacement (%)')
+        ax.set_ylabel('Floor')
+        plt.tight_layout()
+        plt.savefig(self.root_out/ 'Pushover.png', dpi=600)
         if plot_result:
-            plt.subplot(121)
-            plt.plot(x_pushover, y_pushover)
-            plt.xlabel('Roof drift (%)')
-            plt.ylabel(label)
-            plt.title('Roof drift - shear force')
-            plt.xlim(0)
-            plt.ylim(0)
-            plt.subplot(122)
-            data = np.zeros((self.Nstory + 1, len(FDR_lines) * 2))
-            for i, FDR_line in enumerate(FDR_lines):
-                plt.plot(FDR_line * 100, np.arange(1, self.Nstory + 2, 1), '-o', label=f'{round(FDR_step[i]*100, 0)}%')
-                data[:, i*2] = FDR_line * 100
-                data[:, i*2+1] = np.arange(1, self.Nstory + 2, 1)
-            np.savetxt(self.root_out/'归一化屋顶位移曲线.txt', data)
-            plt.legend()
-            plt.xlabel('Nominal floor displacement (%)')
-            plt.ylabel('Floor')
             plt.show()
+        plt.close()
         logger.success('完成     ')
-
 
     def read_cyclic_pushover(self, H: float,  plot_result=True):
         """读取循环pushover分析结果
@@ -742,18 +770,21 @@ class DataProcessing:
         np.savetxt(self.root_out/'屋顶位移角-基底剪力(kN).txt', np.column_stack((RDR, shear)))
         np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力(%).txt', np.column_stack((x_cp, y_cp)))
         # 画图
+        plt.subplot(121)
+        plt.title('Roof drift - shear force')
+        plt.plot(RDR, shear)
+        plt.xlabel('Roof drift ratio')
+        plt.ylabel('Base shear (kN)')
+        plt.subplot(122)
+        plt.title('Roof drift - norm. shear force')
+        plt.plot(x_cp, y_cp)
+        plt.xlabel('Roof drift ratio (%)')
+        plt.ylabel('Norm. base shear (%)')
+        plt.tight_layout()
+        plt.savefig(self.root_out / 'Pushover.png', dpi=600)  # NOTE: Newly added
         if plot_result:
-            plt.subplot(121)
-            plt.title('Roof drift - shear force')
-            plt.plot(RDR, shear)
-            plt.xlabel('Roof drift ratio')
-            plt.ylabel('Base shear (kN)')
-            plt.subplot(122)
-            plt.title('Roof drift - norm. shear force')
-            plt.plot(x_cp, y_cp)
-            plt.xlabel('Roof drift ratio (%)')
-            plt.ylabel('Norm. base shear (%)')
             plt.show()
+        plt.close()
         logger.success('完成     ')
 
     def read_th(self):

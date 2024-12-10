@@ -1,6 +1,8 @@
 import os
 import sys
+import json
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -12,6 +14,7 @@ from scipy.stats import norm
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 from loguru import logger
+from MRFcore.get_SSF import get_SFF
 if __name__ == "__main__":
     sys.path.append(str(Path(__file__).parent.parent))
 
@@ -156,9 +159,6 @@ def get_mean_std_line(all_x: list[list], all_y: list[list], n: int) -> tuple[np.
     y_std = np.array(y_std)
     return x, y_mean, y_std
 
-def _hazard_curve(x, a, b, c, d, e):
-    return a * x ** 4 + b * x ** 3 + c * x ** 2 + d * x + e
-
 class FragilityAnalysis():
     available_DM_types = ['IM', 'IDR', 'DCF', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'beamHinge', 'colHinge', 'panelZone']  # 允许的DM类型
 
@@ -199,6 +199,7 @@ class FragilityAnalysis():
         self.risk_figs: dict[str, Figure] = {}
         self.risk_text: dict[str, str] = {}
         self.risk_EDP_hazard_curves: dict[str, np.ndarray] = {}
+        self.DM_has_fixed_beta: dict[str, float] = {}  # 指定了固定不确定性beta_TOT的DM类型
         self._check_file()
         self._read_file()
         # ResultFolder = model + '_new'
@@ -342,7 +343,6 @@ class FragilityAnalysis():
             self.std[DM_name] = std
         logger.success('已计算IDA曲线')
 
-
     def frag_curve(self, damage_states: dict[str, list[float]], labels: dict[str, list[str]], betaDC: float=0.4):
         """对概率需求模型进行拟合，计算易损性曲线
 
@@ -399,11 +399,15 @@ class FragilityAnalysis():
         logger.success('已完成易损性函数计算和概率需求模型的拟合')
 
 
-    def exceedance_probability(self, DM_values: dict[str, float]):
+    def exceedance_probability(self,
+            DM_values: dict[str, float],
+            beta_total: dict[str, float | None]=None
+        ):
         """计算所有损伤指标超越某值的概率
 
         Args:
             DM_values (float): 损伤指标超越DM_value的概率
+            beta_total (dict[str, float], optional): 总不确定性，默认None，即仅考虑计算得到的地震动记录不确定性
         """
         for key in DM_values.keys():
             if not key in self.DM_types:
@@ -411,6 +415,7 @@ class FragilityAnalysis():
         self.exceed_mean, self.exceed_std, self.exceed_pct50 = {}, {}, {}  # 均值、标准差、中位值
         self.exceed_x, self.exceed_y = {}, {}  # 超越概率点的横纵坐标
         self.exceed_x_fit, self.exceed_y_fit = {}, {}  # 超越概率点的拟合曲线横纵坐标
+        self.exceed_y_fixedBeta = {}  # 采用固定不确定性导致的标准差的易损性曲线
         for DM_name, DM_value in DM_values.items():
             # DM_name: 损伤指标名称, DM_value: 损伤值
             # 以直线x=DM_value切割所有IDA曲线，获得交点
@@ -434,12 +439,18 @@ class FragilityAnalysis():
             exceed_x = sorted(IM_points)  # 超越概率点横坐标(IM)
             exceed_y = np.array([i/self.GM_N for i in range(1, self.GM_N+1)])  # 超越概率点纵坐标(超越概率)
             # 拟合超越概率曲线
-            ln_theta = 1 / len(exceed_x) * sum(np.log(exceed_x))
-            theta = np.exp(ln_theta)
-            beta = np.sqrt(1 / len(exceed_x) * sum((np.log(exceed_x / theta))**2))
+            theta = np.median(exceed_x)  # 取中值
+            beta = np.std(np.log(exceed_x), ddof=1)  # 对数标准差
             IM1, IM2 = 0.001, max(exceed_x) * 1.2  # 坐标范围
             exceed_x_fit = np.linspace(IM1, IM2, 1001)  # 超越概率曲线横坐标(IM)
             exceed_y_fit = norm.cdf(np.log(exceed_x_fit / theta) / beta, 0, 1)  # 超越概率曲线横坐标(超越概率)
+            if (beta_total is not None) and (DM_name in beta_total.keys()) and (beta_total[DM_name] is not None):
+                beta_fixed = beta_total[DM_name]  # 采用传入的总不确定性(beta_TOT)
+                logger.success(f'为`{DM_name}`类型指定了体系总不确定性: beta_total = {beta_fixed} (仅用于进行倒塌评估)')
+                self.DM_has_fixed_beta[DM_name] = beta_fixed
+            else:
+                beta_fixed = beta
+            exceed_y_fixedBeta = norm.cdf(np.log(exceed_x_fit / theta) / beta_fixed, 0, 1)
             text = ''  # 统计特征的文本
             text += f'`{DM_name}`超越{DM_value}的概率特征：\n'
             text += f'均值：{exceed_mean:.6f}\n'
@@ -453,6 +464,7 @@ class FragilityAnalysis():
             self.exceed_y[DM_name] = exceed_y
             self.exceed_x_fit[DM_name] = exceed_x_fit
             self.exceed_y_fit[DM_name] = exceed_y_fit
+            self.exceed_y_fixedBeta[DM_name] = exceed_y_fixedBeta
             self.info[DM_name] += text
             self.DM_values = DM_values
         logger.success('已计算超越概率曲线')
@@ -478,7 +490,7 @@ class FragilityAnalysis():
             ax: Axes = axes[0]
             ax.loglog(hazard_curve[:, 0], hazard_curve[:, 1], '-o', label='USGS curve')
             x_temp = np.linspace(hazard_curve[0, 0], hazard_curve[-1, 0], 1000)
-            ax.loglog(x_temp, np.power(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
+            ax.loglog(x_temp, np.pow(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
             ax.grid(True)
             ax.set_xlabel('Sa')
             ax.set_ylabel(f'MAF of Sa')
@@ -525,11 +537,11 @@ class FragilityAnalysis():
             if plot:
                 plt.tight_layout()
                 plt.show()
+            plt.close()
             self.risk_figs[EDP_type] = fig
             self.risk_text[EDP_type] = text_risk
             self.risk_EDP_hazard_curves[EDP_type] = np.array([x_EDP, gama]).T
             self.has_risk_data = True
-            plt.close()
 
 
     def visualization(self, plot_IDA_idx: int=None, plot: bool=True):
@@ -598,8 +610,10 @@ class FragilityAnalysis():
                 ax.set_ylabel(f'P')
             ax.set_xlabel('IM')
             if DM_name in self.exceed_x_fit.keys():
-                ax.plot(self.exceed_x_fit[DM_name], self.exceed_y_fit[DM_name])
+                ax.plot(self.exceed_x_fit[DM_name], self.exceed_y_fit[DM_name], label='Fragility curve')
                 ax.plot(self.exceed_x[DM_name], self.exceed_y[DM_name], 'o', color='red')
+                if DM_name in self.DM_has_fixed_beta.keys():
+                    ax.plot(self.exceed_x_fit[DM_name], self.exceed_y_fixedBeta[DM_name], label=f'Fixed beta_TOT = {self.DM_has_fixed_beta[DM_name]}')
             ax.set_xlim(0)
             ax.set_ylim(0)
             # 画图
@@ -610,13 +624,21 @@ class FragilityAnalysis():
             plt.close()
 
 
-    def collapse_evaluation(self, T1: float, MCE_spec: Path | str, SF_spec: float=1):
-        """抗倒塌性能评估
+    def collapse_evaluation(self,
+            T: float,
+            MCE_spec: Path | str,
+            SF_spec: float=1,
+            miuT: float=None,
+            SDC: Literal['B', 'C', 'Dmin', 'Dmax', 'other']=None,
+        ):
+        """Collapse assessment based on FEMA P695 and manual probability
 
         Args:
-            T1 (float): 结构一阶周期
+            T (float): 结构周期(T=CuTa，非一阶周期)
             MCE_spec (Path | str): MCE规范谱所在文件路径(文件为两列，一列周期一列谱值)
             SF_spec (float, optional): 将规范谱的谱值进行放大，默认放大系数为1
+            miuT (float, optional): Period-based ductility，默认None
+            SDC (Literal['B', 'C', 'Dmin', 'Dmax', 'other'], optional): Seismic design category，默认None
         """
         MCE_spec = Path(MCE_spec)
         if not MCE_spec.exists():
@@ -625,10 +647,53 @@ class FragilityAnalysis():
             raise ValueError('未进行`IDR`类型的易损性分析')
         spec_data = np.loadtxt(MCE_spec)
         spec_data[:, 1] *= SF_spec
-        Sa_MCE = get_y(spec_data[:, 0], spec_data[:, 1], T1)  # 一阶周期对应的MCE谱谱值
-        self.CMR = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fit['IDR'], 0.5) / Sa_MCE
-        print(f'倒塌储备系数(CMR)：{self.CMR:.3f}')
-
+        Sa_MCE = get_y(spec_data[:, 0], spec_data[:, 1], T)  # 一阶周期对应的MCE谱谱值
+        self.all_CMR: dict[str, float] = {}
+        SCT_5 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.05)  # 不同倒塌概率对应的倒塌强度
+        SCT_10 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.1)
+        SCT_15 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.15)
+        SCT_20 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.20)
+        SCT_25 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.25)
+        SCT_50 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.5)
+        CMR = SCT_50 / Sa_MCE
+        CMR5 = SCT_50 / SCT_5
+        CMR10 = SCT_50 / SCT_10
+        CMR15 = SCT_50 / SCT_15
+        CMR20 = SCT_50 / SCT_20
+        CMR25 = SCT_50 / SCT_25
+        print(f'Sa_MCE = {Sa_MCE:.3f}, SCT_10 = {SCT_10:.3f}')
+        ACMR = 0
+        ACMR5 = 0
+        ACMR10 = 0
+        ACMR15 = 0
+        ACMR20 = 0
+        ACMR25 = 0
+        print(f'CMR = {CMR:.3f}')
+        print(f'CMR10 = {CMR10:.3f}')
+        print(f'CMR20 = {CMR20:.3f}')
+        if miuT is not None:
+            ssf = get_SFF(T, miuT, SDC)
+            ACMR = CMR * ssf
+            ACMR5 = CMR5 * ssf
+            ACMR10 = CMR10 * ssf
+            ACMR15 = CMR15 * ssf
+            ACMR20 = CMR20 * ssf
+            ACMR25 = CMR25 * ssf
+            print(f'ACMR = {ACMR:.3f}')
+            print(f'ACMR10 = {ACMR10:.3f}')
+            print(f'ACMR20 = {ACMR20:.3f}')
+        self.all_CMR['CMR'] = CMR
+        self.all_CMR['CMR5'] = CMR5
+        self.all_CMR['CMR10'] = CMR10
+        self.all_CMR['CMR15'] = CMR15
+        self.all_CMR['CMR20'] = CMR20
+        self.all_CMR['CMR25'] = CMR25
+        self.all_CMR['ACMR'] = ACMR
+        self.all_CMR['ACMR5'] = ACMR5
+        self.all_CMR['ACMR10'] = ACMR10
+        self.all_CMR['ACMR15'] = ACMR15
+        self.all_CMR['ACMR20'] = ACMR20
+        self.all_CMR['ACMR25'] = ACMR25
 
     def save_data(self, output_path: str | Path):
         """保存分析结果
@@ -711,12 +776,19 @@ class FragilityAnalysis():
                 for i, (x, y) in enumerate(zip(self.exceed_x_fit[DM_name], self.exceed_y_fit[DM_name])):
                     ws2.cell(2+i, 3, x)
                     ws2.cell(2+i, 4, y)
+                if DM_name in self.exceed_y_fixedBeta.keys():
+                    ws2.cell(1, 5, '拟合(固定beta_TOT)')
+                    ws2.merge_cells(start_row=1, start_column=5, end_row=1, end_column=6)
+                    for i, (x, y) in enumerate(zip(self.exceed_x_fit[DM_name], self.exceed_y_fixedBeta[DM_name])):
+                        ws2.cell(2+i, 5, x)
+                        ws2.cell(2+i, 6, y)
             wb.save(output_path / f'易损性曲线_{DM_name}.xlsx')
             # 保存计算结果参数
             if DM_name in self.info.keys():
                 with open(output_path / f'概率特征_{DM_name}.out', 'w') as f:
                     f.write(self.info[DM_name])
-            np.savetxt(output_path / f'CMR.out', [self.CMR], fmt='%.3f')
+            with open(output_path / f'CMR.json', 'w') as f:
+                json.dump(self.all_CMR, f, indent=4)
         if self.has_risk_data:
             for EDP_type in self.risk_EDP_hazard_curves.keys():
                 with open(output_path / f'risk_info_{EDP_type}.out', 'w') as f:
