@@ -12,7 +12,6 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy.stats import norm
 from scipy.interpolate import interp1d
-from scipy.optimize import curve_fit
 from loguru import logger
 from MRFcore.get_SSF import get_SFF
 if __name__ == "__main__":
@@ -23,6 +22,7 @@ if __name__ == "__main__":
 2024-04-07: 优化画图代码，增加保存结果图像文件
 2024-05-31: 功能增强，可同时处理多种工程需求参数类型，代码结构优化
 2024-11-10：增加风险评估功能
+2024-12-13: 代码结构优化
 """
 
 logger.remove()
@@ -160,15 +160,15 @@ def get_mean_std_line(all_x: list[list], all_y: list[list], n: int) -> tuple[np.
     return x, y_mean, y_std
 
 class FragilityAnalysis():
-    available_DM_types = ['IM', 'IDR', 'DCF', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'beamHinge', 'colHinge', 'panelZone']  # 允许的DM类型
+    available_EDP_types = ['IM', 'IDR', 'DCF', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'beamHinge', 'colHinge', 'panelZone']  # 允许的DM类型
 
-    def __init__(self, root: str | Path, DM_types: list[str],
-                 collapse_limit: float=None, additional_items: list[str]=None):
+    def __init__(self, root: str | Path, EDP_types: list[str],
+                 collapse_limit: float=0.1, additional_items: list[str]=None):
         """地震易损性、倒塌易损性分析
 
         Args:
             root (str | Path): 待读取数据的文件夹的路径
-            DM_types (list[str]): 工程需求参数类型
+            EDP_types (list[str]): 工程需求参数类型
             * [IDR] - 层间位移角
             * [DCF] - 层间变形集中系数
             * [PFV] - 层间速度
@@ -181,29 +181,76 @@ class FragilityAnalysis():
             * [panelZone] - 最大节点域变形
             * additional_item - 其他项\n
             collapse_limit (float, optional): 倒塌极限层间位移角，如果给定DM对应的层间位移角角大于给定值，
-            则不统计，可设为0.1或0.15，默认为None，即不删除倒塌点之后的点\n
+            则不统计，可设为0.1或0.15，默认为0.1\n
             additional_items (list[str], optional): 其他的要读取的项
         """
-        for DM_name in DM_types:
-            if not DM_name in self.available_DM_types:
-                raise ValueError(f'`DM_name`不是可用的类型')
+        for EDP_type in EDP_types:
+            if not EDP_type in self.available_EDP_types:
+                raise ValueError(f'`EDP_type`不是可用的类型')
         self.Calc_collapse = False  # 是否有进行倒塌易损性计算
         self.Calc_p = False  # 是否有进行EDP超越概率计算
         self.root = Path(root)
-        self.DM_types = DM_types
+        self.EDP_types = EDP_types
         self.collapse_limit = collapse_limit
         self.additional_items = additional_items
         if self.additional_items:
-            self.DM_types += self.additional_items
+            self.EDP_types += self.additional_items
         self.has_risk_data = False  # 是否进行了风险评估
-        self.risk_figs: dict[str, Figure] = {}
-        self.risk_text: dict[str, str] = {}
-        self.risk_EDP_hazard_curves: dict[str, np.ndarray] = {}
-        self.DM_has_fixed_beta: dict[str, float] = {}  # 指定了固定不确定性beta_TOT的DM类型
+        self._init_variables()
         self._check_file()
         self._read_file()
         # ResultFolder = model + '_new'
         # self.init_ReadFile(ResultFolder, EDP_type)
+
+    def _init_variables(self):
+        """初始化参数"""
+        # calc_IDA
+        self.IM_scatter: dict[str, list] = {}  # IDA曲线散点(包含临界倒塌点)
+        self.DM_scatter: dict[str, list] = {}
+        self.IM_scatter1: dict[str, list] = {}  # IDA曲线散点(不包含临界倒塌点)
+        self.DM_scatter1: dict[str, list] = {}
+        self.IM_lines: dict[str, list[list]] = {}  # IDA曲线
+        self.DM_lines: dict[str, list[list]] = {}
+        self.pct_x, self.pct_16, self.pct_50, self.pct_84, self.mean, self.std = {}, {}, {}, {}, {}, {}
+        # frag_curve
+        self.fig_PSDM = dict[str, Figure]  # PSDM拟合
+        self.fig_fragility_curves = dict[str, Figure]  # 地震易损性曲线
+        self.AB: dict[str, tuple[float, float]] = {}  # ln(DM) = A + B * ln(IM)
+        self.R2: dict[str, float] = {}  # R方
+        self.ln_IM_line, self.ln_DM_line = {}, {}  # ln(IM)和ln(DM)的拟合曲线
+        self.x_frag: dict[str, np.ndarray] = {}  # 易损性曲线横坐标
+        self.y_frag: dict[str, list[np.ndarray]] = {}  # 易损性曲线纵坐标(多个)
+        self.DS: dict[str, dict[str, float]] = {}  # 损伤状态及对应标签
+        self.beta: dict[str, float] = {}  # 不确定性系数
+        self.info: dict[str, str] = {}  # 记录拟合参数
+        # exceedance_probability
+        self.DM_has_fixed_beta: dict[str, float] = {}  # 指定了固定不确定性beta_TOT的DM类型
+        self.exceed_mean: dict[str, float]  = {}  # 超越概率均值
+        self.exceed_std: dict[str, float]  = {}  # 超越概率标准差
+        self.exceed_pct50: dict[str, float] = {}  # 中位值
+        self.exceed_x, self.exceed_y = {}, {}  # 超越概率点的横纵坐标
+        self.exceed_x_fit, self.exceed_y_fit = {}, {}  # 超越概率点的拟合曲线横纵坐标
+        self.exceed_y_fixedBeta = {}  # 采用固定不确定性导致的标准差的易损性曲线
+        self.DM_values: dict[str, float] = {}  # 超越概率计算所需的DM值
+        # manual_probability
+        self.risk_figs: dict[str, Figure] = {}
+        self.risk_text: dict[str, str] = {}
+        self.risk_EDP_hazard_curves: dict[str, np.ndarray] = {}
+        # collapse_evaluation
+        self.all_CMR: dict[str, float] = {}  # CMR
+        # 可视化
+        self.all_figures_1: dict[str, Figure] = {}  # 所有易损性相关图
+        self.all_figures_2: dict[str, Figure] = {}  # 所有概率风险相关图
+        for EDP_type in self.EDP_types[::-1]:
+            fig, exes = plt.subplots(nrows=1, ncols=3, figsize=(16, 5))
+            fig.suptitle(f'Risk Analysis of `{EDP_type}`')
+            self.all_figures_2[EDP_type] = fig
+            plt.tight_layout(w_pad=3)
+        for EDP_type in self.EDP_types[::-1]:
+            fig, exes = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
+            fig.suptitle(f'Fragility Analysis of `{EDP_type}`')
+            self.all_figures_1[EDP_type] = fig
+            plt.tight_layout(pad=3)
 
     def _check_file(self):
         # 数据初步检查
@@ -226,7 +273,7 @@ class FragilityAnalysis():
         """读取结果文件"""
         # 读取数据
         self.data: list[pd.DataFrame] = []  # 包含所有时程结果的最值
-        columns = self.available_DM_types
+        columns = self.available_EDP_types
         if self.additional_items:
             columns += self.additional_items
         for idx_gm in range(self.GM_N):
@@ -307,322 +354,319 @@ class FragilityAnalysis():
             for idx, line in df.iterrows():
                 if line['IDR'] >= self.collapse_limit:
                     break
-            df = df[df.index<=idx]  # 删除倒塌点之后的数据
+            df = df[df.index<=idx]  # 保留临界倒塌点，删除之后的数据
             self.data.append(df)
         logger.success('已读取数据')
 
+    def calc_IDA(self, EDP_type: str, marked_idx: int=None):
+        """计算IDA曲线
 
-    def calc_IDA(self):
-        """计算IDA曲线簇"""
-        self.IM_scatter, self.DM_scatter = {}, {}
-        self.IM_lines, self.DM_lines = {}, {}
-        self.pct_x, self.pct_16, self.pct_50, self.pct_84, self.mean, self.std = {}, {}, {}, {}, {}, {}
-        for DM_name in self.DM_types:
-            # 遍历DM类型
-            print(f'  正在计算`{DM_name}`类型的IDA曲线      \r', end='')
-            IM_scatter, DM_scatter = [], []  # 所有IDA曲线的散点坐标
-            IM_lines, DM_lines = [], []  # IDA曲线簇(多条)
-            for df in self.data:
-                IM_scatter += df['IM'].to_list()
-                DM_scatter += df[DM_name].to_list()
-                IM_lines.append([0] + df['IM'].to_list())
-                DM_lines.append([0] + df[DM_name].to_list())
-                pct_x, pct_16 = get_percentile_line(DM_lines, IM_lines, p=16, n=300)
-                pct_x, pct_50 = get_percentile_line(DM_lines, IM_lines, p=50, n=300)
-                pct_x, pct_84 = get_percentile_line(DM_lines, IM_lines, p=84, n=300)
-                _, mean, std = get_mean_std_line(DM_lines, IM_lines, n=300)
-            self.IM_scatter[DM_name] = IM_scatter
-            self.DM_scatter[DM_name] = DM_scatter
-            self.IM_lines[DM_name] = IM_lines
-            self.DM_lines[DM_name] = DM_lines
-            self.pct_x[DM_name] = pct_x
-            self.pct_16[DM_name] = pct_16
-            self.pct_50[DM_name] = pct_50
-            self.pct_84[DM_name] = pct_84
-            self.mean[DM_name] = mean
-            self.std[DM_name] = std
+        Args:
+            EDP_type (str): 工程需求参数类型
+            marked_idx (int, optional): 标记的IDA曲线的索引用于画图时高亮显示，默认为None
+        """
+        print(f'  正在计算`{EDP_type}`类型的IDA曲线      \r', end='')
+        IM_scatter, DM_scatter = [], []  # 所有IDA曲线的散点坐标
+        IM_scatter1, DM_scatter1 = [], []  # 所有IDA曲线的散点坐标（不包含倒塌点）
+        IM_lines, DM_lines = [], []  # IDA曲线簇(多条)
+        for df in self.data:
+            IM_scatter += df['IM'].to_list()  # 包含临界倒塌点
+            DM_scatter += df[EDP_type].to_list()
+            IM_scatter1 += df['IM'].to_list()[:-1]  # 不包含临界倒塌点
+            DM_scatter1 += df[EDP_type].to_list()[:-1]
+            IM_lines.append([0] + df['IM'].to_list())
+            DM_lines.append([0] + df[EDP_type].to_list())
+            pct_x, pct_16 = get_percentile_line(DM_lines, IM_lines, p=16, n=300)
+            pct_x, pct_50 = get_percentile_line(DM_lines, IM_lines, p=50, n=300)
+            pct_x, pct_84 = get_percentile_line(DM_lines, IM_lines, p=84, n=300)
+            _, mean, std = get_mean_std_line(DM_lines, IM_lines, n=300)
+        self.IM_scatter[EDP_type] = IM_scatter
+        self.DM_scatter[EDP_type] = DM_scatter
+        self.IM_scatter1[EDP_type] = IM_scatter1
+        self.DM_scatter1[EDP_type] = DM_scatter1
+        self.IM_lines[EDP_type] = IM_lines
+        self.DM_lines[EDP_type] = DM_lines
+        self.pct_x[EDP_type] = pct_x
+        self.pct_16[EDP_type] = pct_16
+        self.pct_50[EDP_type] = pct_50
+        self.pct_84[EDP_type] = pct_84
+        self.mean[EDP_type] = mean
+        self.std[EDP_type] = std
+        # 画图 IDA曲线
+        fig = self.all_figures_1[EDP_type]
+        ax: Axes = fig.get_axes()[0]
+        label1 = 'Uncollapsed points'
+        label2 = 'Collapsed points'
+        for i, (x, y) in enumerate(zip(self.DM_lines[EDP_type], self.IM_lines[EDP_type])):
+            if marked_idx == i:
+                ax.plot(x, y, color='blue', markersize=6, label=f'idx={i}', zorder=9999)
+            else:
+                ax.plot(x, y, color='#BFBFBF', markersize=4)
+            ax.scatter(x[:-1], y[:-1], color='#E59EDD', zorder=8999, s=7, label=label1)  # 未倒塌点
+            ax.scatter(x[-1], y[-1], color='red', zorder=8999, s=10, label=label2)  # 临界倒塌点
+            label1 = None
+            label2 = None
+        ax.plot(self.pct_x[EDP_type], self.pct_16[EDP_type], label='16%', color='green', linewidth=3, linestyle='--')
+        ax.plot(self.pct_x[EDP_type], self.pct_50[EDP_type], label='50%', color='green', linewidth=3)
+        ax.plot(self.pct_x[EDP_type], self.pct_84[EDP_type], label='84%', color='green', linewidth=3, linestyle='--')
+        ax.set_title(f'IDA curves ({EDP_type})')
+        ax.legend()
+        if EDP_type == 'IDR':
+            ax.set_xlim(0, self.collapse_limit)
+        else:
+            ax.set_xlim(0)
+        ax.set_ylim(0)
+        ax.set_xlabel('DM')
+        ax.set_ylabel('IM')
         logger.success('已计算IDA曲线')
 
-    def frag_curve(self, damage_states: dict[str, list[float]], labels: dict[str, list[str]], betaDC: float=0.4):
+    def frag_curve(self, EDP_type: str, DS: dict[str, float], beta: float, IM_limit: float=None):
         """对概率需求模型进行拟合，计算易损性曲线
 
         Args:
-            damage_states (dict[str, list[float]]): 不同损伤状态对应的EDP\n
-            labels (dict[str, list[str]]): 不同损伤状态对应的描述\n
-            betaDC (float, optional): 表征不确定性的标准差(默认0.4)
+            EDP_type (str): 工程需求参数名称
+            DS (dict[str, float]): 损伤状态标签及对应数值
+            beta (float): 表征不确定性的标准差
+            IM_limit (float, optional): 易损性曲线的最大横坐标范围，默认为None，取倒塌时84%分为地震动强度的1.8倍
         """
-        keys = list(damage_states.keys()) + list(labels.keys())
-        for key in keys:
-            if not key in self.DM_types:
-                raise KeyError(f'尚未指定`{key}`类型，请在`__init__`方法的`DM_types`参数中添加')
-        self.damage_states = damage_states
-        self.labels = labels
-        self.A, self.B = {}, {}  # ln(DM) = A + B * ln(IM)
-        self.R2 = {}  # R方
-        self.ln_IM_fit, self.ln_DM_fit = {}, {}
-        self.x_frag: dict[str, np.ndarray] = {}
-        self.y_frag: dict[str, list[np.ndarray]] = {}
-        self.info: dict[str, str] = {}  # 记录拟合参数
-        for DM_name, DS in damage_states.items():
-            # DM_name: 损伤指标名称, DS: 损伤状态值
-            print(f'  正在计算`{DM_name}`类型的易损性曲线和概率需求模型      \r', end='')
-            IM = self.IM_scatter[DM_name]
-            DM = self.DM_scatter[DM_name]
-            IM1 = min(IM)
-            # 地震易损性曲线的横坐标最大范围(取为84分位线的最大IM值的1.5倍)
-            IM2_for_frag_curve = get_y(self.pct_x[DM_name], self.pct_84[DM_name], max(DS)) * 1.5
-            # 概率需求模型曲线的横坐标最大范围(取为最大IM值)
-            IM2_for_prob_curve = max(IM)
-            ln_IM_fit = np.linspace(IM1, IM2_for_prob_curve, 1001)
-            ln_IM, ln_DM = np.log(IM), np.log(DM)
-            n = len(ln_IM)
-            B = (n * sum(ln_IM * ln_DM) - sum(ln_IM) * sum(ln_DM)) / (n * sum(ln_IM**2) - sum(ln_IM)**2)
-            A = (sum(ln_DM) - B * sum(ln_IM)) / n
-            ln_DM_pre = A + B * ln_IM
-            SSR = np.sum((ln_DM - ln_DM_pre) ** 2)
-            SST = np.sum((ln_DM - np.mean(ln_DM_pre)) ** 2)
-            R2 = 1 - (SSR / SST)
-            x_frag = np.linspace(0.001, IM2_for_frag_curve * 1.2, 1000)  # 易损性曲线x轴
-            y_frag = []  # 易损性曲线y轴
-            for _, DS_i in enumerate(DS):
-                y_frag.append(norm.cdf((A + B * np.log(x_frag) - np.log(DS_i)) / betaDC, 0, 1))  # 易损性曲线y轴
-            # DM和IM的对数关系
-            ln_DM_fit = np.exp(A + B * np.log(ln_IM_fit))
-            self.A[DM_name] = A
-            self.B[DM_name] = B
-            self.R2[DM_name] = R2
-            self.ln_IM_fit[DM_name] = ln_IM_fit
-            self.ln_DM_fit[DM_name] = ln_DM_fit
-            self.x_frag[DM_name] = x_frag
-            self.y_frag[DM_name] = y_frag
-            self.info[DM_name] = f'类型`{DM_name}`\n\n概率模型需求参数(ln(DM) = A + B * ln(IM))：\nA = {A:.6f}\nB = {B:.6f}\n\n'
+        if not EDP_type in self.EDP_types:
+            raise KeyError(f'尚未指定`{EDP_type}`类型，请在`__init__`方法的`EDP_types`参数中添加')
+        self.beta[EDP_type] = beta
+        self.DS[EDP_type] = DS
+        # EDP_type: 损伤指标名称, DS: 损伤状态值
+        print(f'  正在计算`{EDP_type}`类型的易损性曲线和概率需求模型      \r', end='')
+        IM = np.array(self.IM_scatter1[EDP_type])
+        DM = np.array(self.DM_scatter1[EDP_type])
+        # 地震易损性曲线的横坐标最大范围(取为84分位线的最大IM值的3倍)
+        if IM_limit is None:
+            IM2_for_frag_curve = get_y(self.pct_x[EDP_type], self.pct_84[EDP_type], max(DS.values())) * 1.8
+        else:
+            IM2_for_frag_curve = IM_limit
+        # 概率需求模型曲线的横坐标最大范围(取为最大IM值)
+        ln_IM, ln_DM = np.log(IM), np.log(DM)
+        ln_IM_line = np.linspace(min(ln_IM), max(ln_IM), 1001)
+        mean_ln_IM = np.mean(ln_IM)
+        mean_ln_DM = np.mean(ln_DM)
+        B = np.sum((ln_IM - mean_ln_IM) * (ln_DM - mean_ln_DM)) / np.sum((ln_IM - mean_ln_IM) ** 2)
+        A = mean_ln_DM - B * mean_ln_IM
+        ln_DM_pre = A + B * ln_IM
+        SSR = np.sum((ln_DM - ln_DM_pre) ** 2)
+        SST = np.sum((ln_DM - np.mean(ln_DM_pre)) ** 2)
+        R2 = 1 - (SSR / SST)
+        x_frag = np.linspace(0.001, IM2_for_frag_curve, 1000)  # 易损性曲线x轴
+        y_frags: list[np.ndarray] = []  # 易损性曲线y轴
+        for _, DS_i in DS.items():
+            y_frags.append(norm.cdf((A + B * np.log(x_frag) - np.log(DS_i)) / beta, 0, 1))  # 易损性曲线y轴
+        # DM和IM的对数关系
+        ln_DM_line = A + B * ln_IM_line
+        self.AB[EDP_type] = (A, B)
+        self.R2[EDP_type] = R2
+        self.ln_IM_line[EDP_type] = ln_IM_line
+        self.ln_DM_line[EDP_type] = ln_DM_line
+        self.x_frag[EDP_type] = x_frag
+        self.y_frag[EDP_type] = y_frags
+        self.info[EDP_type] = f'类型`{EDP_type}`\n\n概率模型需求参数(ln(DM) = A + B * ln(IM))：\nA = {A:.6f}\nB = {B:.6f}\n\n'
+        # 画图: 概率需求曲线
+        fig: Figure = self.all_figures_1[EDP_type]
+        axes = fig.get_axes()
+        ax: Axes = axes[0]
+        x = np.array(self.pct_x[EDP_type])
+        y = (x / np.exp(A)) ** (1 / B)
+        ax.plot(x, y, color='red', label='PSDM')
+        ax.legend()
+        # 画图: PSDM拟合
+        ax: Axes = axes[1]
+        ax.plot(ln_IM, ln_DM, 'o')  # 散点
+        ax.plot(ln_IM_line, ln_DM_line, 'red', label=f'ln(DM) = {A:.4f} + {B:.4f} * ln(IM)')
+        ax.legend()
+        ax.set_title('ln(DM) - ln(IM)')
+        ax.set_xlabel('ln(IM)')
+        ax.set_ylabel('ln(DM)')
+        # 画图: 易损性曲线
+        ax: Axes = axes[2]
+        for i, (label, DS_i) in enumerate(DS.items()):
+            ax.plot(x_frag, y_frags[i], label=f'{label} ({DS_i})')
+        ax.legend()
+        ax.set_title('Fragility curves')
+        ax.set_xlim(0)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel('IM')
+        ax.set_ylabel('Exceeding probability')
         logger.success('已完成易损性函数计算和概率需求模型的拟合')
 
-
     def exceedance_probability(self,
-            DM_values: dict[str, float],
+            EDP_type: str,
+            DM_value: float,
             beta_total: dict[str, float | None]=None
         ):
         """计算所有损伤指标超越某值的概率
 
         Args:
+            EDP_type (str): 工程需求参数名称
             DM_values (float): 损伤指标超越DM_value的概率
-            beta_total (dict[str, float], optional): 总不确定性，默认None，即仅考虑计算得到的地震动记录不确定性
+            beta_total (dict[str, float], optional): 指定确定性来绘制易损性曲线，默认None，即仅考虑计算得到的地震动记录不确定性
         """
-        for key in DM_values.keys():
-            if not key in self.DM_types:
-                raise KeyError(f'尚未指定`{key}`类型，请在`__init__`方法的`DM_types`参数中添加')
-        self.exceed_mean, self.exceed_std, self.exceed_pct50 = {}, {}, {}  # 均值、标准差、中位值
-        self.exceed_x, self.exceed_y = {}, {}  # 超越概率点的横纵坐标
-        self.exceed_x_fit, self.exceed_y_fit = {}, {}  # 超越概率点的拟合曲线横纵坐标
-        self.exceed_y_fixedBeta = {}  # 采用固定不确定性导致的标准差的易损性曲线
-        for DM_name, DM_value in DM_values.items():
-            # DM_name: 损伤指标名称, DM_value: 损伤值
-            # 以直线x=DM_value切割所有IDA曲线，获得交点
-            IM_lines, DM_lines = self.IM_lines[DM_name], self.DM_lines[DM_name]  # 所有IDA曲线
-            if DM_value < min([min(i) for i in DM_lines]):
-                raise ValueError(f'`{DM_name}`类型的`{DM_value}`值小于所有IDA曲线的最小DM值({min([max(i) for i in DM_lines])})')
-            if DM_value > max([max(i) for i in DM_lines]):
-                raise ValueError(f'`{DM_name}`类型的`{DM_value}`值大于所有IDA曲线的最大DM值({max([max(i) for i in DM_lines])})')
-            IM_points = []  # 交点对应的IM纵坐标列表
-            for i in range(self.GM_N):
-                IM_line, DM_line = IM_lines[i], DM_lines[i]  # 单调IDA曲线
-                try:
-                    y = get_y(DM_line, IM_line, DM_value)
-                    IM_points.append(y)
-                except ValueError:
-                    logger.warning(f'`{DM_name}`类型的`{DM_value}`值不在第{i+1}条IDA曲线的DM范围内({min(DM_line)}, {max(DM_line)})')
-            if len(IM_points) < self.GM_N:
-                logger.error(f'将不进行`{DM_name}`类型的超越概率统计')
-                continue
-            exceed_mean, exceed_std, exceed_pct50 = np.mean(IM_points), np.std(IM_points), np.percentile(IM_points, 50)  # 均值、标准差、中位值
-            exceed_x = sorted(IM_points)  # 超越概率点横坐标(IM)
-            exceed_y = np.array([i/self.GM_N for i in range(1, self.GM_N+1)])  # 超越概率点纵坐标(超越概率)
-            # 拟合超越概率曲线
-            theta = np.median(exceed_x)  # 取中值
-            beta = np.std(np.log(exceed_x), ddof=1)  # 对数标准差
-            IM1, IM2 = 0.001, max(exceed_x) * 1.2  # 坐标范围
-            exceed_x_fit = np.linspace(IM1, IM2, 1001)  # 超越概率曲线横坐标(IM)
-            exceed_y_fit = norm.cdf(np.log(exceed_x_fit / theta) / beta, 0, 1)  # 超越概率曲线横坐标(超越概率)
-            if (beta_total is not None) and (DM_name in beta_total.keys()) and (beta_total[DM_name] is not None):
-                beta_fixed = beta_total[DM_name]  # 采用传入的总不确定性(beta_TOT)
-                logger.success(f'为`{DM_name}`类型指定了体系总不确定性: beta_total = {beta_fixed} (仅用于进行倒塌评估)')
-                self.DM_has_fixed_beta[DM_name] = beta_fixed
-            else:
-                beta_fixed = beta
-            exceed_y_fixedBeta = norm.cdf(np.log(exceed_x_fit / theta) / beta_fixed, 0, 1)
-            text = ''  # 统计特征的文本
-            text += f'`{DM_name}`超越{DM_value}的概率特征：\n'
-            text += f'均值：{exceed_mean:.6f}\n'
-            text += f'标准差：{exceed_std:.6f}\n'
-            text += f'中位值：{exceed_pct50:.6f}\n\n'
-            print(text)
-            self.exceed_mean[DM_name] = exceed_mean
-            self.exceed_std[DM_name] = exceed_std
-            self.exceed_pct50[DM_name] = exceed_pct50
-            self.exceed_x[DM_name] = exceed_x
-            self.exceed_y[DM_name] = exceed_y
-            self.exceed_x_fit[DM_name] = exceed_x_fit
-            self.exceed_y_fit[DM_name] = exceed_y_fit
-            self.exceed_y_fixedBeta[DM_name] = exceed_y_fixedBeta
-            self.info[DM_name] += text
-            self.DM_values = DM_values
+        if not EDP_type in self.EDP_types:
+            raise KeyError(f'尚未指定`{EDP_type}`类型，请在`__init__`方法的`EDP_types`参数中添加')
+        # EDP_type: 损伤指标名称, DM_value: 损伤值
+        # 以直线x=DM_value切割所有IDA曲线，获得交点
+        IM_lines, DM_lines = self.IM_lines[EDP_type], self.DM_lines[EDP_type]  # 所有IDA曲线
+        if DM_value < min([min(i) for i in DM_lines]):
+            raise ValueError(f'`{EDP_type}`类型的`{DM_value}`值小于所有IDA曲线的最小DM值({min([max(i) for i in DM_lines])})')
+        if DM_value > max([max(i) for i in DM_lines]):
+            raise ValueError(f'`{EDP_type}`类型的`{DM_value}`值大于所有IDA曲线的最大DM值({max([max(i) for i in DM_lines])})')
+        IM_points = []  # 交点对应的IM纵坐标列表
+        for i in range(self.GM_N):
+            IM_line, DM_line = IM_lines[i], DM_lines[i]  # 单调IDA曲线
+            try:
+                y = get_y(DM_line, IM_line, DM_value)
+                IM_points.append(y)
+            except ValueError:
+                logger.warning(f'`{EDP_type}`类型的`{DM_value}`值不在第{i+1}条IDA曲线的DM范围内({min(DM_line)}, {max(DM_line)})')
+        if len(IM_points) < self.GM_N:
+            logger.error(f'将不进行`{EDP_type}`类型的超越概率统计')
+            return
+        exceed_mean, exceed_std, exceed_pct50 = np.mean(IM_points), np.std(IM_points), np.percentile(IM_points, 50)  # 均值、标准差、中位值
+        exceed_x = sorted(IM_points)  # 超越概率点横坐标(IM)
+        exceed_y = np.array([i/self.GM_N for i in range(1, self.GM_N+1)])  # 超越概率点纵坐标(超越概率)
+        # 拟合超越概率曲线
+        theta = np.median(exceed_x)  # 取中值
+        beta = np.std(np.log(exceed_x), ddof=1)  # 对数标准差
+        IM1, IM2 = 0.001, max(exceed_x) * 1.2  # 坐标范围
+        exceed_x_fit = np.linspace(IM1, IM2, 1001)  # 超越概率曲线横坐标(IM)
+        exceed_y_fit = norm.cdf(np.log(exceed_x_fit / theta) / beta, 0, 1)  # 超越概率曲线横坐标(超越概率)
+        if beta_total is not None:
+            beta_fixed = beta_total  # 采用传入的总不确定性(beta_TOT)
+            logger.success(f'为`{EDP_type}`类型指定了体系总不确定性: beta_total = {beta_fixed} (仅用于进行倒塌评估)')
+            self.DM_has_fixed_beta[EDP_type] = beta_fixed
+        else:
+            beta_fixed = beta
+        exceed_y_fixedBeta = norm.cdf(np.log(exceed_x_fit / theta) / beta_fixed, 0, 1)
+        text = ''  # 统计特征的文本
+        text += f'`{EDP_type}`超越{DM_value}的概率特征：\n'
+        text += f'均值：{exceed_mean:.6f}\n'
+        text += f'标准差：{exceed_std:.6f}\n'
+        text += f'中位值：{exceed_pct50:.6f}'
+        print(text)
+        self.exceed_mean[EDP_type] = exceed_mean
+        self.exceed_std[EDP_type] = exceed_std
+        self.exceed_pct50[EDP_type] = exceed_pct50
+        self.exceed_x[EDP_type] = exceed_x
+        self.exceed_y[EDP_type] = exceed_y
+        self.exceed_x_fit[EDP_type] = exceed_x_fit
+        self.exceed_y_fit[EDP_type] = exceed_y_fit
+        self.exceed_y_fixedBeta[EDP_type] = exceed_y_fixedBeta
+        self.info[EDP_type] += text
+        self.DM_values[EDP_type] = DM_value
+        # 画图: 超越概率曲线
+        fig: Figure = self.all_figures_1[EDP_type]
+        axes = fig.get_axes()
+        ax: Axes = axes[3]
+        ax.set_title(f'Exceedance probability of {EDP_type}>{DM_value}')
+        ax.set_ylabel(f'P({EDP_type}>{DM_value})')
+        ax.set_xlabel('IM')
+        if EDP_type in self.exceed_x_fit.keys():
+            ax.plot(exceed_x_fit, exceed_y_fit, label='Fragility curve')
+            ax.plot(exceed_x, exceed_y, 'o', color='red')
+            if EDP_type in self.DM_has_fixed_beta.keys():
+                ax.plot(exceed_x_fit, exceed_y_fixedBeta, label=f'Fixed beta_TOT = {beta_fixed}')
+        ax.set_xlim(0)
+        ax.set_ylim(0)
+        ax.legend()
         logger.success('已计算超越概率曲线')
 
     def manual_probability(self,
-            EDP: dict[str, tuple[float, float, float, float]],
+            EDP_type: str,
+            Sa_range: tuple[float, float],
+            EDP_range: tuple[float, float],
             hazard_curve: np.ndarray,
-            density: float=1001,
-            plot: bool=True
+            fragility_type: Literal['computed', 'PSDM']='computed',
+            density: float=1000
         ):
         """年度超越概率计算
 
         Args:
-            EDP (dict[str, tuple[float, float], tuple[float, float]]): 工程需求参数, {EDP类型: (EDP范围1, EDP范围2, IM范围1, IM范围2)}
+            EDP (str): 工程需求参数类型
+            Sa_range (tuple[float, float]): 灾害作用范围
+            EDP_range (tuple[float, float]): 工程需求参数范围
             hazard_curve (np.ndarray): 灾害曲线(二维数组，两列)
+            fragility_type (Literal['computed', 'PSDM']): 使用哪种易损性曲线('computed': 基于IDA数据直接拟合; 'PSDM': 基于概率地震需求模型)
             density (float): 采样点密度
         """
-        for EDP_type, (EDP_min, EDP_max, Sa_min, Sa_max) in EDP.items():
-            # 遍历工程需求参数类型
-            x_Sa = np.linspace(Sa_min, Sa_max, density)  # Sa轴坐标
-            get_log10_harzard_curve = interp1d(np.log10(hazard_curve[:, 0]), np.log10(hazard_curve[:, 1]), kind='cubic', fill_value='extrapolate', bounds_error=False)
-            fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(16, 5))
-            ax: Axes = axes[0]
-            ax.loglog(hazard_curve[:, 0], hazard_curve[:, 1], '-o', label='USGS curve')
-            x_temp = np.linspace(hazard_curve[0, 0], hazard_curve[-1, 0], 1000)
-            ax.loglog(x_temp, np.pow(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
-            ax.grid(True)
-            ax.set_xlabel('Sa')
-            ax.set_ylabel(f'MAF of Sa')
-            ax.set_title('Hazard Curve')
-            ax.legend()
-            if EDP_type not in self.DM_types:
-                raise KeyError(f'尚未指定`{EDP_type}`类型，请在`__init__`方法的`DM_types`参数中添加')
-            x_EDP = np.linspace(EDP_min, EDP_max, density)  # IDA曲线横坐标(密集点)
-            y_ls = np.zeros((self.GM_N, density))  # IDA曲线纵坐标(密集点)
-            for i, df in enumerate(self.data):
-                x_points = [0] + df[EDP_type].to_list()
-                y_points = [0] + df['IM'].to_list()
-                linear_interp = interp1d(x_points, y_points, kind='linear', fill_value=0, bounds_error=False)
-                y = linear_interp(x_EDP)
-                y_ls[i] = y
-            ln_theta = np.mean(np.log(y_ls), axis=0)
-            beta = np.std(np.log(y_ls), axis=0)
-            gama = np.zeros_like(x_Sa)
-            log10_HSa = get_log10_harzard_curve(np.log10(x_Sa))  # 灾害曲线的对数
-            HSa = np.power(10, log10_HSa)  # 灾害曲线
-            diff_HSa = np.append(0, np.diff(HSa))  # 灾害曲线的差分
-            for i, (ln_theta_i, beta_i) in enumerate(zip(ln_theta, beta)):
-                # 遍历EDP值
+        Sa_min, Sa_max = Sa_range
+        EDP_min, EDP_max = EDP_range
+        if EDP_min == 0:
+            EDP_min = 1e-8
+        x_Sa = np.linspace(Sa_min, Sa_max, density)  # Sa轴坐标
+        get_log10_harzard_curve = interp1d(np.log10(hazard_curve[:, 0]), np.log10(hazard_curve[:, 1]), kind='cubic', fill_value='extrapolate', bounds_error=False)
+        x_temp = np.linspace(hazard_curve[0, 0], hazard_curve[-1, 0], 1000)
+        if EDP_type not in self.EDP_types:
+            raise KeyError(f'尚未指定`{EDP_type}`类型，请在`__init__`方法的`EDP_types`参数中添加')
+        x_EDP = np.linspace(EDP_min, EDP_max, density)  # IDA曲线横坐标(密集点)
+        y_ls = np.zeros((self.GM_N, density))  # IDA曲线纵坐标(密集点)
+        for i, df in enumerate(self.data):
+            x_points = [0] + df[EDP_type].to_list()
+            y_points = [0] + df['IM'].to_list()
+            linear_interp = interp1d(x_points, y_points, kind='linear', fill_value=0, bounds_error=False)
+            y = linear_interp(x_EDP)
+            y_ls[i] = y
+        ln_theta = np.median(np.log(y_ls), axis=0)  # 地震动强度中值
+        beta = np.std(np.log(y_ls), axis=0)  # 地震动强度标准差
+        gama = np.zeros_like(x_Sa)
+        log10_HSa = get_log10_harzard_curve(np.log10(x_Sa))  # 灾害曲线的对数
+        HSa = np.power(10, log10_HSa)  # 灾害曲线
+        diff_HSa = np.append(0, np.diff(HSa))  # 灾害曲线的差分
+        for i, (ln_theta_i, beta_i) in enumerate(zip(ln_theta, beta)):
+            EDP_value = x_EDP[i]
+            # 遍历EDP值
+            if fragility_type == 'computed':
                 y_cdf = norm.cdf((np.log(x_Sa) - ln_theta_i) / beta_i, 0, 1)  # 易损性函数(累积概率分布曲线)
-                gama_i = np.sum(y_cdf * np.abs(diff_HSa))  # 易损性函数乘以灾害曲线的差分
-                gama[i] = gama_i
-            P50years = 1 - np.exp(-gama_i * 50)
-            text_risk = f'Risk Evaluation:\nManual probability P[{EDP_type} > {round(x_EDP[-1], 2)}] = {gama_i:.3e}\n'
-            text_risk += f'50 Years Probability P[{EDP_type} > {round(x_EDP[-1], 2)}] = {P50years:.2%}'
-            print(text_risk)
-            ax: Axes = axes[1]
-            ax.plot(x_Sa, y_cdf, label=f'P[{EDP_type} > {round(x_EDP[-1], 2)}]')
-            ax.set_xlabel('Sa')
-            ax.set_ylabel('Probability of Exceedance')
-            ax.set_title('Fragility Curve')
-            ax.legend()
-            ax.grid(True)
-            ax: Axes = axes[2]
-            ax.semilogy(x_EDP, gama)
-            ax.set_xlabel(EDP_type)
-            ax.set_ylabel(f'MAF of {EDP_type}')
-            ax.set_title(f'{EDP_type} Hazard Curve')
-            ax.grid(True)
-            if plot:
-                plt.tight_layout()
-                plt.show()
-            plt.close()
-            self.risk_figs[EDP_type] = fig
-            self.risk_text[EDP_type] = text_risk
-            self.risk_EDP_hazard_curves[EDP_type] = np.array([x_EDP, gama]).T
-            self.has_risk_data = True
-
-
-    def visualization(self, plot_IDA_idx: int=None, plot: bool=True):
-        """可视化曲线图
-
-        Args:
-            plot_IDA_idx (int, optional): 如果指定，则绘制索引为`plot_IDA_idx`的IDA曲线
-            plot (bool, optional): 是否绘制曲线图
-        """
-        self.figs: dict[str, Figure] = {}
-        for DM_name in self.DM_types:
-            fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
-            # 1 IDA曲线
-            ax: Axes = axes[0, 0]
-            label1 = 'Uncollapsed points'
-            label2 = 'Collapsed points'
-            for i, (x, y) in enumerate(zip(self.DM_lines[DM_name], self.IM_lines[DM_name])):
-                if plot_IDA_idx == i:
-                    ax.plot(x, y, color='blue', markersize=6, label=f'idx={i}', zorder=9999)
-                else:
-                    ax.plot(x, y, color='#BFBFBF', markersize=4)
-                ax.scatter(x[:-1], y[:-1], color='#E59EDD', zorder=8999, s=7, label=label1)  # 未倒塌点
-                ax.scatter(x[-1], y[-1], color='red', zorder=8999, s=10, label=label2)  # 临界倒塌点
-                label1 = None
-                label2 = None
-            ax.plot(self.pct_x[DM_name], self.pct_16[DM_name], label='16%', color='green', linewidth=3, linestyle='--')
-            ax.plot(self.pct_x[DM_name], self.pct_50[DM_name], label='50%', color='green', linewidth=3)
-            ax.plot(self.pct_x[DM_name], self.pct_84[DM_name], label='84%', color='green', linewidth=3, linestyle='--')
-            ax.set_title(f'IDA curves ({DM_name})')
-            ax.legend()
-            if DM_name == 'IDR':
-                ax.set_xlim(0, self.collapse_limit)
+            elif fragility_type == 'PSDM':
+                if not EDP_type in self.EDP_types:
+                    raise KeyError(f'尚未指定`{EDP_type}`类型的A参数，请在`__init__`方法的`A`参数中添加')
+                A, B = self.AB[EDP_type]
+                # IM2_for_frag_curve = get_y(self.pct_x[EDP_type], self.pct_84[EDP_type], np.max(theta_i)) * 1.5
+                # x_frag = np.linspace(0.001, IM2_for_frag_curve * 1.2, 1000)  # 易损性曲线x轴
+                y_cdf = norm.cdf((A + B * np.log(x_Sa) - np.log(EDP_value)) / self.beta[EDP_type], 0, 1)
             else:
-                ax.set_xlim(0)
-            ax.set_ylim(0)
-            ax.set_xlabel('DM')
-            ax.set_ylabel('IM')
-            # 2 ln(DM)-ln(IM) (线性)
-            ax: Axes = axes[0, 1]
-            if DM_name in self.ln_IM_fit.keys():
-                ax.plot(np.log(self.IM_scatter[DM_name]), np.log(self.DM_scatter[DM_name]), 'o')
-                ax.plot(np.log(self.ln_IM_fit[DM_name]), np.log(self.ln_DM_fit[DM_name]), 'red', label=f'ln(DM) = {self.A[DM_name]:.4f} + {self.B[DM_name]:.4f} * ln(IM)')
-                ax.legend()
-            ax.set_title('ln(DM) - ln(IM)')
-            ax.set_xlabel('ln(IM)')
-            ax.set_ylabel('ln(DM)')
-            # 3 易损性曲线
-            ax: Axes = axes[1, 0]
-            if DM_name in self.x_frag.keys():
-                x_frag = self.x_frag[DM_name]
-                for i, y_frag in enumerate(self.y_frag[DM_name]):
-                    ax.plot(x_frag, y_frag, label=f'{self.labels[DM_name][i]} ({self.damage_states[DM_name][i]})')
-                ax.legend()
-            ax.set_title('Fragility curves')
-            ax.set_xlim(0)
-            ax.set_ylim(0, 1)
-            ax.set_xlabel('IM')
-            ax.set_ylabel('Exceeding probability')
-            # 4 DM超越概率
-            ax: Axes = axes[1, 1]
-            if DM_name in self.DM_values.keys():
-                ax.set_title(f'Exceedance probability of {DM_name}>{self.DM_values[DM_name]}')
-                ax.set_ylabel(f'P({DM_name}>{self.DM_values[DM_name]})')
-            else:
-                ax.set_title(f'Exceedance probability of {DM_name}')
-                ax.set_ylabel(f'P')
-            ax.set_xlabel('IM')
-            if DM_name in self.exceed_x_fit.keys():
-                ax.plot(self.exceed_x_fit[DM_name], self.exceed_y_fit[DM_name], label='Fragility curve')
-                ax.plot(self.exceed_x[DM_name], self.exceed_y[DM_name], 'o', color='red')
-                if DM_name in self.DM_has_fixed_beta.keys():
-                    ax.plot(self.exceed_x_fit[DM_name], self.exceed_y_fixedBeta[DM_name], label=f'Fixed beta_TOT = {self.DM_has_fixed_beta[DM_name]}')
-            ax.set_xlim(0)
-            ax.set_ylim(0)
-            # 画图
-            if plot:
-                plt.tight_layout()
-                plt.show()
-            self.figs[DM_name] = fig
-            plt.close()
+                raise ValueError(f'Wrong fragility_type: {fragility_type}')
+            gama_i = np.sum(y_cdf * np.abs(diff_HSa))  # 易损性函数乘以灾害曲线的差分
+            gama[i] = gama_i
+        P50years = 1 - np.exp(-gama_i * 50)
+        text_risk = f'Risk Evaluation:\nManual probability P[{EDP_type} > {round(x_EDP[-1], 2)}] = {gama_i:.3e}\n'
+        text_risk += f'50 Years Probability P[{EDP_type} > {round(x_EDP[-1], 2)}] = {P50years:.2%}'
+        print(text_risk)
+        self.risk_text[EDP_type] = text_risk
+        self.risk_EDP_hazard_curves[EDP_type] = np.array([x_EDP, gama]).T
+        self.has_risk_data = True
+        # 画图: 灾害曲线
+        fig = self.all_figures_2[EDP_type]
+        axes = fig.get_axes()
+        ax: Axes = axes[0]
+        ax.loglog(hazard_curve[:, 0], hazard_curve[:, 1], '-o', label='USGS curve')
+        ax.loglog(x_temp, np.pow(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
+        ax.grid(True)
+        ax.set_xlabel('Sa')
+        ax.set_ylabel(f'MAF of Sa')
+        ax.set_title('Hazard Curve')
+        ax.legend()
+        ax: Axes = axes[1]
+        ax.plot(x_Sa, y_cdf, label=f'P[{EDP_type} > {round(x_EDP[-1], 2)}]')
+        ax.set_xlabel('Sa')
+        ax.set_ylabel('Probability of Exceedance')
+        ax.set_title('Fragility Curve')
+        ax.legend()
+        ax.grid(True)
+        ax: Axes = axes[2]
+        ax.semilogy(x_EDP, gama)
+        ax.set_xlabel(EDP_type)
+        ax.set_ylabel(f'MAF of {EDP_type}')
+        ax.set_title(f'{EDP_type} Hazard Curve')
+        ax.grid(True)
 
+    def visualization(self):
+        """可视化曲线图"""
+        plt.show()
 
     def collapse_evaluation(self,
             T: float,
@@ -643,12 +687,11 @@ class FragilityAnalysis():
         MCE_spec = Path(MCE_spec)
         if not MCE_spec.exists():
             raise FileExistsError(f'无法找到文件：{str(MCE_spec.absolute())}')
-        if 'IDR' not in self.DM_types:
+        if 'IDR' not in self.EDP_types:
             raise ValueError('未进行`IDR`类型的易损性分析')
         spec_data = np.loadtxt(MCE_spec)
         spec_data[:, 1] *= SF_spec
         Sa_MCE = get_y(spec_data[:, 0], spec_data[:, 1], T)  # 一阶周期对应的MCE谱谱值
-        self.all_CMR: dict[str, float] = {}
         SCT_5 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.05)  # 不同倒塌概率对应的倒塌强度
         SCT_10 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.1)
         SCT_15 = get_x(self.exceed_x_fit['IDR'], self.exceed_y_fixedBeta['IDR'], 0.15)
@@ -661,7 +704,7 @@ class FragilityAnalysis():
         CMR15 = SCT_50 / SCT_15
         CMR20 = SCT_50 / SCT_20
         CMR25 = SCT_50 / SCT_25
-        print(f'Sa_MCE = {Sa_MCE:.3f}, SCT_10 = {SCT_10:.3f}')
+        print(f'SCT_50 = {SCT_50:.3f}, Sa_MCE = {Sa_MCE:.3f}')
         ACMR = 0
         ACMR5 = 0
         ACMR10 = 0
@@ -705,13 +748,16 @@ class FragilityAnalysis():
         if not Path.exists(output_path):
             os.makedirs(output_path)
         print('正在保存数据...\r', end='')
-        for DM_name in self.DM_types:
-            self.figs[DM_name].savefig(output_path / f'figures_{DM_name}.png', dpi=600)  # 保存曲线图
+        for EDP_type in self.EDP_types:
+            if EDP_type in self.all_figures_1.keys():
+                self.all_figures_1[EDP_type].savefig(output_path / f'FragilityAnalysis_{EDP_type}.png', dpi=600)  # 保存曲线图
+            if EDP_type in self.all_figures_2.keys():
+                self.all_figures_2[EDP_type].savefig(output_path / f'RiskAnalysis_{EDP_type}.png', dpi=600)  # 保存曲线图
             # 1 IDA曲线
             wb = px.Workbook()
             ws1 = wb.active
             ws1.title = 'IDA曲线'
-            for i, (x, y) in enumerate(zip(self.DM_lines[DM_name], self.IM_lines[DM_name])):
+            for i, (x, y) in enumerate(zip(self.DM_lines[EDP_type], self.IM_lines[EDP_type])):
                 ws1.cell(1, 2*i+1, i+1)
                 ws1.merge_cells(start_row=1, start_column=2*i+1, end_row=1, end_column=2*i+2)
                 for j, (xi, yi) in enumerate(zip(x, y)):
@@ -722,16 +768,16 @@ class FragilityAnalysis():
             ws2.cell(1, 1, '16%分位线')
             ws2.cell(1, 3, '50%分位线')
             ws2.cell(1, 5, '84%分位线')
-            for i, (x, y) in enumerate(zip(self.pct_x[DM_name], self.pct_16[DM_name])):
+            for i, (x, y) in enumerate(zip(self.pct_x[EDP_type], self.pct_16[EDP_type])):
                 ws2.cell(i+2, 1, x)
                 ws2.cell(i+2, 2, y)
-            for i, (x, y) in enumerate(zip(self.pct_x[DM_name], self.pct_50[DM_name])):
+            for i, (x, y) in enumerate(zip(self.pct_x[EDP_type], self.pct_50[EDP_type])):
                 ws2.cell(i+2, 3, x)
                 ws2.cell(i+2, 4, y)
-            for i, (x, y) in enumerate(zip(self.pct_x[DM_name], self.pct_84[DM_name])):
+            for i, (x, y) in enumerate(zip(self.pct_x[EDP_type], self.pct_84[EDP_type])):
                 ws2.cell(i+2, 5, x)
                 ws2.cell(i+2, 6, y)
-            wb.save(output_path / f'IDA曲线_{DM_name}.xlsx')
+            wb.save(output_path / f'IDA曲线_{EDP_type}.xlsx')
             # 2 概率需求模型
             wb = px.Workbook()
             ws = wb.active
@@ -740,53 +786,53 @@ class FragilityAnalysis():
             ws.cell(1, 3, '拟合值')
             ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
             ws.merge_cells(start_row=1, start_column=3, end_row=1, end_column=4)
-            if DM_name in self.ln_IM_fit.keys():
-                for i, (x, y) in enumerate(zip(np.log(self.IM_scatter[DM_name]), np.log(self.DM_scatter[DM_name]))):
+            if EDP_type in self.ln_IM_line.keys():
+                for i, (x, y) in enumerate(zip(np.log(self.IM_scatter1[EDP_type]), np.log(self.DM_scatter1[EDP_type]))):
                     ws.cell(i+2, 1, x)
                     ws.cell(i+2, 2, y)
-                for i, (x, y) in enumerate(zip(np.log(self.ln_IM_fit[DM_name]), np.log(self.ln_DM_fit[DM_name]))):
+                for i, (x, y) in enumerate(zip(self.ln_IM_line[EDP_type], self.ln_DM_line[EDP_type])):
                     ws.cell(i+2, 3, x)
                     ws.cell(i+2, 4, y)
-            wb.save(output_path / f'概率需求模型_{DM_name}.xlsx')
+            wb.save(output_path / f'概率需求模型_{EDP_type}.xlsx')
             # 3 地震易损性、超越概率(倒塌易损性)
             wb = px.Workbook()
             ws1 = wb.active
             ws1.title = '地震易损性'
             ws1.cell(1, 1, 'IM')
             ws1.cell(1, 2, '超越概率')
-            if DM_name in self.x_frag.keys():
+            if EDP_type in self.x_frag.keys():
                 ws1.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
-                ws1.merge_cells(start_row=1, start_column=2, end_row=1, end_column=1+len(self.labels[DM_name]))
-                for i, label in enumerate(self.labels[DM_name]):
+                ws1.merge_cells(start_row=1, start_column=2, end_row=1, end_column=1+len(self.DS[EDP_type]))
+                for i, label in enumerate(self.DS[EDP_type].keys()):
                     ws1.cell(2, i+2, label)
-                for i, x in enumerate(self.x_frag[DM_name]):
+                for i, x in enumerate(self.x_frag[EDP_type]):
                     ws1.cell(3+i, 1, x)
-                for i in range(len(self.y_frag[DM_name])):
-                    for j, y in enumerate(self.y_frag[DM_name][i]):
+                for i in range(len(self.y_frag[EDP_type])):
+                    for j, y in enumerate(self.y_frag[EDP_type][i]):
                         ws1.cell(3+j, i+2, y)
-            if DM_name in self.exceed_x.keys():
-                ws2 = wb.create_sheet(f'超越概率P({DM_name}>{self.DM_values[DM_name]})')
+            if EDP_type in self.exceed_x.keys():
+                ws2 = wb.create_sheet(f'超越概率P({EDP_type}>{self.DM_values[EDP_type]})')
                 ws2.cell(1, 1, '实际(散点)')
                 ws2.cell(1, 3, '拟合(曲线)')
                 ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
                 ws2.merge_cells(start_row=1, start_column=3, end_row=1, end_column=4)
-                for i, (x, y) in enumerate(zip(self.exceed_x[DM_name], self.exceed_y[DM_name])):
+                for i, (x, y) in enumerate(zip(self.exceed_x[EDP_type], self.exceed_y[EDP_type])):
                     ws2.cell(2+i, 1, x)
                     ws2.cell(2+i, 2, y)
-                for i, (x, y) in enumerate(zip(self.exceed_x_fit[DM_name], self.exceed_y_fit[DM_name])):
+                for i, (x, y) in enumerate(zip(self.exceed_x_fit[EDP_type], self.exceed_y_fit[EDP_type])):
                     ws2.cell(2+i, 3, x)
                     ws2.cell(2+i, 4, y)
-                if DM_name in self.exceed_y_fixedBeta.keys():
+                if EDP_type in self.exceed_y_fixedBeta.keys():
                     ws2.cell(1, 5, '拟合(固定beta_TOT)')
                     ws2.merge_cells(start_row=1, start_column=5, end_row=1, end_column=6)
-                    for i, (x, y) in enumerate(zip(self.exceed_x_fit[DM_name], self.exceed_y_fixedBeta[DM_name])):
+                    for i, (x, y) in enumerate(zip(self.exceed_x_fit[EDP_type], self.exceed_y_fixedBeta[EDP_type])):
                         ws2.cell(2+i, 5, x)
                         ws2.cell(2+i, 6, y)
-            wb.save(output_path / f'易损性曲线_{DM_name}.xlsx')
+            wb.save(output_path / f'易损性曲线_{EDP_type}.xlsx')
             # 保存计算结果参数
-            if DM_name in self.info.keys():
-                with open(output_path / f'概率特征_{DM_name}.out', 'w') as f:
-                    f.write(self.info[DM_name])
+            if EDP_type in self.info.keys():
+                with open(output_path / f'概率特征_{EDP_type}.out', 'w') as f:
+                    f.write(self.info[EDP_type])
             with open(output_path / f'CMR.json', 'w') as f:
                 json.dump(self.all_CMR, f, indent=4)
         if self.has_risk_data:
@@ -794,35 +840,9 @@ class FragilityAnalysis():
                 with open(output_path / f'risk_info_{EDP_type}.out', 'w') as f:
                     f.write(self.risk_text[EDP_type])
                 np.savetxt(output_path / f'hazard_curve_{EDP_type}.out', self.risk_EDP_hazard_curves[EDP_type], fmt='%.4e')
-                self.risk_figs[EDP_type].savefig(output_path / f'risk_curve_{EDP_type}.png', dpi=600)
+        plt.close()
         logger.success('已保存数据')
 
-
-
-if __name__ == "__main__":
-
-    model = FragilityAnalysis(
-        r'H:\RockingFrameWithRSRD\MRF4S_AS_RD_out',
-        DM_types=['IDR', 'ResIDR', 'PFA', 'DCF'],
-        collapse_limit=0.1,
-        additional_items=[])
-    model.calc_IDA()
-    model.frag_curve(
-        damage_states={'IDR': [0.005, 0.01, 0.02, 0.04],
-                      'ResIDR': [0.002, 0.005],
-                      'PFA': [0.1, 0.2, 0.3],
-                      'DCF': [1.001]},
-        labels={'IDR': ['DS-1', 'DS-2', 'DS-3', 'DS-4'],
-               'ResIDR': ['DS-1', 'DS-2'],
-               'PFA': ['DS-1', 'DS-2', 'DS-3'],
-               'DCF': ['DS-1']}
-    )
-    model.exceedance_probability(
-        DM_values={'IDR': 0.1, 'ResIDR': 0.005, 'PFA': 0.2, 'DCF': 1.001},
-    )
-    model.collapse_evaluation(T1=1.2, MCE_spec=r'F:\Projects\MRF\data\DBE_AS.txt', SF_spec=1.5)
-    model.visualization()
-    model.save_data(r'H:\RockingFrameWithRSRD\MRF4S_AS_RD_frag')
 
 
     
