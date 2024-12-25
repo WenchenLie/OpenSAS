@@ -86,19 +86,28 @@ def get_y(x: list, y: list, x0: float, error: bool=True, x_start_with: float=Non
     x = np.array(x)
     if x_start_with is not None:
         x = x[x >= x_start_with]
+    y0 = []  # 所有交点的横坐标
     for i in range(len(x) - 1):
         if x[i] == x0:
-            y0 = y[i]
-            return y0
+            y0i = y[i]
+            y0.append(y0i)
         elif x[i] < x0 <= x[i + 1]:
             k = (y[i + 1] - y[i]) / (x[i + 1] - x[i])
-            y0 = k * (x0 - x[i]) + y[i]
-            return y0
+            y0i = k * (x0 - x[i]) + y[i]
+            y0.append(y0i)  # 如果有多个交点，则取均值
     else:
-        raise ValueError('【Error】未找到交点-2')
+        if len(y0) == 0:
+            raise ValueError('【Error】未找到交点-2')
+        return np.mean(y0)
 
     
-def get_percentile_line(all_x: list[list], all_y: list[list], p: float, n: int) -> tuple[np.ndarray, np.ndarray]:
+def get_percentile_line(
+        all_x: list[list],
+        all_y: list[list],
+        p: float,
+        n: int=None,
+        x: list | np.ndarray=None
+    ) -> tuple[np.ndarray, np.ndarray]:
     """计算IDA曲线簇的百分位线
 
     Args:
@@ -106,14 +115,16 @@ def get_percentile_line(all_x: list[list], all_y: list[list], p: float, n: int) 
         all_y (list[list]): 所有独立IDA的纵坐标
         p (float): 百分位值
         n (int): 输出的百分位线横坐标的点数量
+        x (list | np.ndarray, optional): 百分位线横坐标，默认为None，即自动生成
 
     Returns:
         tuple[np.ndarray, np.ndarray]: 百分位线的横坐标、纵坐标
     """
     # 计算百分位线
-    x1 = min([min(i) for i in all_x])
-    x2 = max([max(i) for i in all_x])
-    x = np.linspace(x1, x2, n)  # 百分位线横坐标
+    if x is None:
+        x1 = min([min(i) for i in all_x])
+        x2 = max([max(i) for i in all_x])
+        x = np.linspace(x1, x2, n)  # 百分位线横坐标
     y = []  # 百分位线纵坐标
     for _, xi in enumerate(x):
         # xi: int, yi: list
@@ -160,7 +171,7 @@ def get_mean_std_line(all_x: list[list], all_y: list[list], n: int) -> tuple[np.
     return x, y_mean, y_std
 
 class FragilityAnalysis():
-    available_EDP_types = ['IM', 'IDR', 'DCF', 'PFV', 'PFA', 'ResIDR', 'RoofIDR' ,'Shear', 'beamHinge', 'colHinge', 'panelZone']  # 允许的DM类型
+    available_EDP_types = ['IM', 'IDR', 'DCF', 'PFV', 'PFA', 'RIDR', 'RoofIDR' ,'Shear', 'beamHinge', 'colHinge', 'panelZone']  # 允许的DM类型
 
     def __init__(self, root: str | Path, EDP_types: list[str],
                  collapse_limit: float=0.1, additional_items: list[str]=None):
@@ -173,7 +184,7 @@ class FragilityAnalysis():
             * [DCF] - 层间变形集中系数
             * [PFV] - 层间速度
             * [PFA] - 楼层绝对加速度
-            * [ResIDR] - 残余层间位移角
+            * [RIDR] - 残余层间位移角
             * [RoofIDR] - 屋顶层间位移角
             * [Shear] - 层间剪力
             * [beamHinge] - 最大梁铰变形
@@ -213,8 +224,7 @@ class FragilityAnalysis():
         self.DM_lines: dict[str, list[list]] = {}
         self.pct_x, self.pct_16, self.pct_50, self.pct_84, self.mean, self.std = {}, {}, {}, {}, {}, {}
         # frag_curve
-        self.fig_PSDM = dict[str, Figure]  # PSDM拟合
-        self.fig_fragility_curves = dict[str, Figure]  # 地震易损性曲线
+        self.DM_limits: dict[str, float] = {}  # 各DM的最大值，超过该值则不统计
         self.AB: dict[str, tuple[float, float]] = {}  # ln(DM) = A + B * ln(IM)
         self.R2: dict[str, float] = {}  # R方
         self.ln_IM_line, self.ln_DM_line = {}, {}  # ln(IM)和ln(DM)的拟合曲线
@@ -312,8 +322,8 @@ class FragilityAnalysis():
                 else:
                     line.append(0)
                 if (folder/'残余层间位移角.out').exists():
-                    ResIDR = np.loadtxt(folder/'残余层间位移角.out')  # 残余层间位移角
-                    line.append(np.max(np.abs(ResIDR)))
+                    RIDR = np.loadtxt(folder/'残余层间位移角.out')  # 残余层间位移角
+                    line.append(np.max(np.abs(RIDR)))
                 else:
                     line.append(0)
                 if (folder/'屋顶层间位移角.out').exists():
@@ -358,24 +368,34 @@ class FragilityAnalysis():
             self.data.append(df)
         logger.success('已读取数据')
 
-    def calc_IDA(self, EDP_type: str, marked_idx: int=None):
+    def calc_IDA(self, EDP_type: str, DM_limit: float=None, marked_idx: int=None):
         """计算IDA曲线
 
         Args:
             EDP_type (str): 工程需求参数类型
+            DM_limit (float, optional): DM的上限值，超过该值则不统计，默认为None
             marked_idx (int, optional): 标记的IDA曲线的索引用于画图时高亮显示，默认为None
         """
         print(f'  正在计算`{EDP_type}`类型的IDA曲线      \r', end='')
         IM_scatter, DM_scatter = [], []  # 所有IDA曲线的散点坐标
         IM_scatter1, DM_scatter1 = [], []  # 所有IDA曲线的散点坐标（不包含倒塌点）
         IM_lines, DM_lines = [], []  # IDA曲线簇(多条)
+        if DM_limit is not None:
+            self.DM_limits[EDP_type] = DM_limit
         for df in self.data:
-            IM_scatter += df['IM'].to_list()  # 包含临界倒塌点
-            DM_scatter += df[EDP_type].to_list()
-            IM_scatter1 += df['IM'].to_list()[:-1]  # 不包含临界倒塌点
-            DM_scatter1 += df[EDP_type].to_list()[:-1]
-            IM_lines.append([0] + df['IM'].to_list())
-            DM_lines.append([0] + df[EDP_type].to_list())
+            IM_i = df['IM'].to_numpy()
+            DM_i = df[EDP_type].to_numpy()
+            if (DM_limit is not None) and (np.max(DM_i) > DM_limit):
+                # 剔除超过DM_limit的点
+                IM_i = np.append(IM_i[DM_i<=DM_limit], IM_i[DM_i>DM_limit][0])
+                DM_i = np.append(DM_i[DM_i<=DM_limit], DM_i[DM_i>DM_limit][0])
+            IM_i, DM_i = list(IM_i), list(DM_i)
+            IM_scatter += IM_i  # 包含临界倒塌点
+            DM_scatter += DM_i
+            IM_scatter1 += IM_i[:-1]  # 不包含临界倒塌点
+            DM_scatter1 += DM_i[:-1]
+            IM_lines.append([0] + IM_i)
+            DM_lines.append([0] + DM_i)
             pct_x, pct_16 = get_percentile_line(DM_lines, IM_lines, p=16, n=300)
             pct_x, pct_50 = get_percentile_line(DM_lines, IM_lines, p=50, n=300)
             pct_x, pct_84 = get_percentile_line(DM_lines, IM_lines, p=84, n=300)
@@ -415,6 +435,8 @@ class FragilityAnalysis():
             ax.set_xlim(0, self.collapse_limit)
         else:
             ax.set_xlim(0)
+        if EDP_type in self.DM_limits.keys():
+            ax.set_xlim(right=self.DM_limits[EDP_type])
         ax.set_ylim(0)
         ax.set_xlabel('DM')
         ax.set_ylabel('IM')
@@ -465,7 +487,7 @@ class FragilityAnalysis():
         self.ln_DM_line[EDP_type] = ln_DM_line
         self.x_frag[EDP_type] = x_frag
         self.y_frag[EDP_type] = y_frags
-        self.info[EDP_type] = f'类型`{EDP_type}`\n\n概率模型需求参数(ln(DM) = A + B * ln(IM))：\nA = {A:.6f}\nB = {B:.6f}\n\n'
+        self.info[EDP_type] = f'类型`{EDP_type}`\n\n概率模型需求参数(ln(DM) = A + B * ln(IM))：\nA = {A:.6f}\nB = {B:.6f}\nR2 = {R2:.6f}\n\n'
         # 画图: 概率需求曲线
         fig: Figure = self.all_figures_1[EDP_type]
         axes = fig.get_axes()
@@ -607,8 +629,7 @@ class FragilityAnalysis():
         for i, df in enumerate(self.data):
             x_points = [0] + df[EDP_type].to_list()
             y_points = [0] + df['IM'].to_list()
-            linear_interp = interp1d(x_points, y_points, kind='linear', fill_value=0, bounds_error=False)
-            y = linear_interp(x_EDP)
+            _, y = get_percentile_line([x_points], [y_points], p=0.5, x=x_EDP)  # FIXME: 当x_EDP的最大范围超过x_points的时，无法计算百分位线，导致PFA的计算出错
             y_ls[i] = y
         ln_theta = np.median(np.log(y_ls), axis=0)  # 地震动强度中值
         beta = np.std(np.log(y_ls), axis=0)  # 地震动强度标准差
@@ -623,10 +644,8 @@ class FragilityAnalysis():
                 y_cdf = norm.cdf((np.log(x_Sa) - ln_theta_i) / beta_i, 0, 1)  # 易损性函数(累积概率分布曲线)
             elif fragility_type == 'PSDM':
                 if not EDP_type in self.EDP_types:
-                    raise KeyError(f'尚未指定`{EDP_type}`类型的A参数，请在`__init__`方法的`A`参数中添加')
+                    raise KeyError(f'尚未指定`{EDP_type}`类型，请在`__init__`方法的`EDP_types`参数中添加')
                 A, B = self.AB[EDP_type]
-                # IM2_for_frag_curve = get_y(self.pct_x[EDP_type], self.pct_84[EDP_type], np.max(theta_i)) * 1.5
-                # x_frag = np.linspace(0.001, IM2_for_frag_curve * 1.2, 1000)  # 易损性曲线x轴
                 y_cdf = norm.cdf((A + B * np.log(x_Sa) - np.log(EDP_value)) / self.beta[EDP_type], 0, 1)
             else:
                 raise ValueError(f'Wrong fragility_type: {fragility_type}')
