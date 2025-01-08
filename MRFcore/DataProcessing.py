@@ -675,8 +675,8 @@ class DataProcessing:
                 if step == len(FDR_step):
                     break
         # 推覆曲线
-        x_pushover = FDR[-1] * 100
-        y_pushover = shear
+        x_pushover = FDR[-1] * 100  # Unit: %
+        y_pushover = shear  # Unit: kN
         if has_weight:
             y_pushover_norm = shear / weight
         else:
@@ -691,9 +691,13 @@ class DataProcessing:
             np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', curve_pushover_norm)
         else:
             open(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', 'w')
+        np.savetxt(self.root_out/'屋顶位移(mm)-基底剪力(kN).txt', np.array([x_pushover/100*H, shear]).T)
         np.savetxt(self.root_out/'延性系数.txt', np.array([ductility]), fmt='%.6f')
         print(f'最大基底剪力：{max(y_pushover):.3f}')
+        print(f'初始刚度: {K*100:.3f} kN/rad or {K*100/H:.3f} kN/mm')
         print(f'延性系数：{ductility:.3f}')
+        with open(self.root_out/'刚度.txt', 'w') as f:
+            f.write(f'初始刚度:\n{K*100:.3f} kN/rad or {K*100/H:.3f} kN/mm\n')
         # 画图
         fig, axes = plt.subplots(1, 2, figsize=(12, 6))
         ax: Axes = axes[0]
