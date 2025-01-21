@@ -61,7 +61,7 @@ class DataProcessing:
         self.GM_names = np.loadtxt(self.root/'ground_motions.dat', dtype=str, ndmin=1).tolist()  # 地震动名
         self.GM_N = len(self.GM_names)
         self.Nstory = int(np.loadtxt(self.root/'Nstory.dat'))  # 楼层数
-        self.Nbay = int(np.loadtxt(self.root/'Nbay.dat'))  # 楼层数
+        self.Nbay = int(np.loadtxt(self.root/'Nbay.dat'))  # 跨数
         with open(self.root/'notes.dat', 'r') as f:
             self.notes = f.read()
         with open(self.root / 'running_case.dat', 'r') as f:
@@ -685,7 +685,7 @@ class DataProcessing:
         if has_weight:
             curve_pushover_norm = np.array([x_pushover, y_pushover_norm]).T
         ductility, K, delta_yeff, delta_u = self._get_ductility(x_pushover, y_pushover)
-        print(f'delta_yeff = {delta_yeff:.3f}, delta_u = {delta_u:.3f}')
+        print(f'delta_yeff = {delta_yeff:.3f}%, delta_u = {delta_u:.3f}%')
         np.savetxt(self.root_out/'屋顶位移角(%)-基底剪力(kN).txt', curve_pushover)
         if has_weight:
             np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', curve_pushover_norm)
