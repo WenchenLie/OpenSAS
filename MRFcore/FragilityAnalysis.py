@@ -197,7 +197,7 @@ class FragilityAnalysis():
         """
         for EDP_type in EDP_types:
             if not EDP_type in self.available_EDP_types:
-                raise ValueError(f'`EDP_type`不是可用的类型')
+                raise ValueError(f'`{EDP_type}`不是可用的类型')
         self.Calc_collapse = False  # 是否有进行倒塌易损性计算
         self.Calc_p = False  # 是否有进行EDP超越概率计算
         self.root = Path(root)

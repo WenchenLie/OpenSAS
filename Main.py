@@ -51,34 +51,23 @@ def data_processing():
 
 
 def fragility_analysis():
-
-    # 层间位移角
     model = FragilityAnalysis(
-        r'H:\MRF_results\4SMRF_AS_out',
-        DM_types=['IDR', 'ResIDR'],
+        root=r'H:\MRF_results\4SMRF_AS_out',
+        EDP_types=['IDR', 'RIDR', 'PFA'],
         collapse_limit=0.1,
     )
-    model.calc_IDA()
-    model.frag_curve(
-        damage_states={'IDR': [0.005, 0.01, 0.02, 0.04],
-                       'ResIDR': [0.001, 0.002, 0.005, 0.01],
-                    #    'DCF': [1.01, 1.05, 1.1]
-                       },
-        labels={'IDR': ['DS-1', 'DS-2', 'DS-3', 'DS-4'],
-               'ResIDR': ['DS-1', 'DS-2', 'DS-3', 'DS-4'],
-            #    'DCF': ['DS-1', 'DS-2', 'DS-3']
-               }
-    )
-    model.exceedance_probability(
-        DM_values={'IDR': 0.1}
-    )
+    model.calc_IDA('IDR')
+    model.calc_IDA('RIDR')
+    model.calc_IDA('PFA')
+    model.frag_curve('IDR', {'DS-1': 0.005, 'DS-2': 0.01, 'DS-3': 0.02, 'DS-4': 0.04}, beta=0.4)
+    model.frag_curve('RIDR', {'DS-1': 0.001, 'DS-2': 0.002, 'DS-3': 0.005, 'DS-4': 0.01}, beta=0.4)
+    model.frag_curve('PFA', {'DS-1': 0.2, 'DS-2': 0.5, 'DS-3': 1}, beta=0.4)
+    model.exceedance_probability('IDR', 0.1)
     hazard_curves = np.loadtxt('data/hazard_curve_1.242.out')
-    model.collapse_evaluation(T1=1.987, MCE_spec=r'data\DBE_AS.txt', SF_spec=1.5)
+    model.collapse_evaluation(T=1.987, MCE_spec='data1/DBE_AS.txt', SF_spec=1.5)
     model.visualization()
-    model.manual_probability({'IDR': (0.001, 0.1, 0.001, 5)}, hazard_curves)
-    model.manual_probability({'ResIDR': (0.001, 0.005, 0.001, 5)}, hazard_curves)
+    model.manual_probability('IDR', (0.001, 5), (0.001, 0.1), hazard_curves)
     model.save_data(r'H:\MRF_results\4SMRF_AS_frag')
-
 
 
 if __name__ == "__main__":
