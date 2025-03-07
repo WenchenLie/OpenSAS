@@ -9,7 +9,8 @@ def TimeHistorySolver(
         dt_init: float, duration: float, story_heights: list,
         ctrl_nodes: list,  CollapseDrift: float, MaxAnalysisDrift: float,
         GMname: str, maxRunTime: float, ShowAnimation: bool,
-        min_factor: float=1e-6, max_factor: float=1) -> int:
+        min_factor: float=1e-6, max_factor: float=1
+    ) -> tuple[int, float, bool, np.ndarray, list[float]]:
     """This solver is used to perform time history analysis for frame structure.
 
     Args:
@@ -26,11 +27,15 @@ def TimeHistorySolver(
         min_factor (float): Factor to control the adaptive time step
         max_factor (float): Factor to control the adaptive time step
     
-    Return:
+    Return: tuple[int, float, bool, np.ndarray, list[float]]:
         int: 1 - Analysis finished, the structure did not collapse,
-        2 - The structure collapsed,
-        3 - Cannot converge,
-        4 - Exceeding maximum running time
+             2 - The structure collapsed,
+             3 - Cannot converge,
+             4 - Exceeding maximum running time
+        float: Current time
+        bool: Whether the structure collapsed
+        np.ndarray: drift ratio of each story
+        list[float]: drift ratio of roof level
     """
 
     algorithms = [("KrylovNewton",), ("NewtonLineSearch",), ("Newton",), ("SecantNewton",)]
@@ -113,13 +118,13 @@ def TimeHistorySolver(
         nstep += 1
         # if nstep == 20:
         #     break
-            
+
 
 def SDR_tester(story_heights: list, ctrl_nodes: list,
                CollapseDrift: float, MaxAnalysisDrift: float,
-               GMname: str) -> tuple[bool, bool, list, float]:
+               GMname: str) -> tuple[bool, bool, list[float], float]:
     """
-    return (tuple[bool, bool]): Exceeding CollapseDrift? Exceeding MaxAnalysisDrift? 
+    return (tuple[bool, bool, list[float], float]): Exceeding CollapseDrift? Exceeding MaxAnalysisDrift? SDR, and roof SDR 
     """
     if CollapseDrift > MaxAnalysisDrift:
         raise ValueError('`MaxAnalysisDrift` should be larger than `CollapseDrift`')

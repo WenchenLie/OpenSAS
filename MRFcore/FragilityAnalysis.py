@@ -663,7 +663,7 @@ class FragilityAnalysis():
         axes = fig.get_axes()
         ax: Axes = axes[0]
         ax.loglog(hazard_curve[:, 0], hazard_curve[:, 1], '-o', label='USGS curve')
-        ax.loglog(x_temp, np.pow(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
+        ax.loglog(x_temp, pow(10, get_log10_harzard_curve(np.log10(x_temp))), label='Cubic Interpolation')
         ax.grid(True)
         ax.set_xlabel('Sa')
         ax.set_ylabel(f'MAF of Sa')

@@ -66,19 +66,34 @@ class DataProcessing:
             self.notes = f.read()
         with open(self.root / 'running_case.dat', 'r') as f:
             self.running_case = f.read()
+        self.heights = np.loadtxt(self.root/'heights.dat')  # 层高
         error_dir = []
         error_Sa = []
         for gm_name in self.GM_names:
             for i in range(1, 10000):
-                if Path.exists(self.root/f'{gm_name}_{i}'):
-                    print(f'正在检查数据 {gm_name}_{i}    \r', end='')
+                subfolder = f'{gm_name}_{i}' if self.running_case == 'IDA' else gm_name
+                if Path.exists(self.root/subfolder):
+                    print(f'正在检查数据 {subfolder}    \r', end='')
                     try:
-                        pd.read_csv(self.root/f'{gm_name}_{i}/Time.out')
+                        file_name = (self.root/subfolder/'Time.out').absolute()
+                        assert (self.root/subfolder/'Time.out').exists(), f'未找到文件: {file_name}'
                     except:
-                        error_dir.append(str(self.root/f'{gm_name}_{i}'))
-                        Sa = np.loadtxt(self.root/f'{gm_name}_{i}/Sa.dat')
+                        error_dir.append(str(self.root/subfolder))
+                        Sa = np.loadtxt(self.root/subfolder/'Sa.dat')
                         error_Sa.append(str(np.round(Sa, 10)))
+                    try:
+                        status = int(np.loadtxt(self.root/subfolder/'Status.dat'))
+                        file_name = (self.root/subfolder).absolute()
+                        if status == 3:
+                            logger.warning(f'计算不收敛: {file_name}')
+                        elif status == 4:
+                            logger.warning(f'超过最大计算时间: {file_name}')
+                    except FileNotFoundError as e:
+                        file_name = (self.root/subfolder/'Status.dat').absolute()
+                        logger.warning(f'找不到 tatus.dat文件 ({file_name})')
                 else:
+                    break
+                if self.running_case != 'IDA':
                     break
         if error_dir:
             error_text = [error_dir[i] + '  Sa = ' + error_Sa[i] for i in range(len(error_Sa))]
@@ -391,13 +406,24 @@ class DataProcessing:
                 for story in range(1, self.Nstory + 1):
                     # 遍历楼层
                     data = np.loadtxt(folder / f'RFA{story+1}.out')[10:]  # 楼层相对加速度
-                    data += a_base  # 转换为绝对加速度
+                    try:
+                        data += a_base  # 转换为绝对加速度
+                    except Exception as e:
+                        print('【ERROR】')
+                        print(folder / 'groundmotion.out')
+                        print(folder / f'RFA{story+1}.out')
+                        # raise e
                     data_max= max(abs(data)) / self.g
                     PFA[story - 1] = data_max
                 self._mkdir(self.root_out/subfolder)
                 np.savetxt(self.root_out/subfolder/'层加速度(g).out', PFA)
                 a_roof = np.loadtxt(folder/f'RFA{self.Nstory+1}.out')[10:] / self.g  # 屋顶相对加速度
-                a_roof += a_base  # 屋顶绝对加速度
+                try:
+                    a_roof += a_base  # 屋顶绝对加速度
+                except:
+                    print('【ERROR】')
+                    print(folder / 'groundmotion.out')
+                    print(folder / f'RFA{self.Nstory+1}.out')
                 np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', a_roof)
                 num += 1
                 if self.running_case == 'TH':
@@ -608,7 +634,7 @@ class DataProcessing:
             raise ValueError('【Error】未找到交点-1')
 
     @staticmethod
-    def _get_ductility(x: np.ndarray, y: np.ndarray  # NOTE: Newly added
+    def _get_ductility(x: np.ndarray, y: np.ndarray
         ) -> tuple[float, float, float, float]:
         """获取推覆曲线的延性系数"""
         y_max = max(y)
@@ -620,7 +646,7 @@ class DataProcessing:
         delta_u = DataProcessing._get_x(x[idx_y_max:], y[idx_y_max:], 0.8 * y_max)
         miu = delta_u / delta_yeff
         return miu, K, delta_yeff, delta_u
-        
+
     def read_pushover(self, H: float, FDR_step=[0.01*i for i in range(1, 11)], plot_result=True):
         """读取pushover结果，计算应力
 
@@ -636,6 +662,9 @@ class DataProcessing:
         Time = np.loadtxt(self.root/'pushover/Time.out')[11:]
         n = len(Time)
         PO_path = self.root / 'pushover'
+        # 侧向力分布模式
+        pattern = np.loadtxt(self.root/'pushover/Pattern.out')
+        pattern = pattern / np.sum(pattern)  # 归一化
         # 底部重力
         has_weight = False
         weight = 0
@@ -651,6 +680,13 @@ class DataProcessing:
                 shear += np.loadtxt(item)[11:, 0] / 1000  # 剪力单位转换为kN
         if abs(min(shear[:100])) > abs(max(shear[:100])):
             shear *= -1  # 将推覆方向始终设为正向
+        lateral_load = np.zeros((self.Nstory, len(shear)))  # 各楼层的侧向力
+        overturning_moment = np.zeros_like(shear)  # 底部倾覆力矩(kN-m)
+        print('侧向力分布: ', pattern)
+        H_ = np.array([np.sum(self.heights[:i+1]) for i in range(self.Nstory)])
+        for i in range(self.Nstory):
+            lateral_load[i] = shear * pattern[i]
+            overturning_moment += lateral_load[i] * H_[i] / 1000
         # 各层位移
         u = np.zeros((self.Nstory, n))
         for i in range(self.Nstory):
@@ -687,19 +723,21 @@ class DataProcessing:
         ductility, K, delta_yeff, delta_u = self._get_ductility(x_pushover, y_pushover)
         print(f'delta_yeff = {delta_yeff:.3f}%, delta_u = {delta_u:.3f}%')
         np.savetxt(self.root_out/'屋顶位移角(%)-基底剪力(kN).txt', curve_pushover)
+        np.savetxt(self.root_out/'屋顶位移角(%)-基底倾覆力矩(kN-m).txt', np.column_stack((x_pushover, overturning_moment)))
         if has_weight:
             np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', curve_pushover_norm)
         else:
             open(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', 'w')
         np.savetxt(self.root_out/'屋顶位移(mm)-基底剪力(kN).txt', np.array([x_pushover/100*H, shear]).T)
         np.savetxt(self.root_out/'延性系数.txt', np.array([ductility]), fmt='%.6f')
-        print(f'最大基底剪力：{max(y_pushover):.3f}')
+        print(f'最大基底剪力：{max(y_pushover):.3f} kN')
+        print(f'最大基底倾覆力矩：{max(overturning_moment):.3f} kN-m')
         print(f'初始刚度: {K*100:.3f} kN/rad or {K*100/H:.3f} kN/mm')
         print(f'延性系数：{ductility:.3f}')
         with open(self.root_out/'刚度.txt', 'w') as f:
             f.write(f'初始刚度:\n{K*100:.3f} kN/rad or {K*100/H:.3f} kN/mm\n')
         # 画图
-        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
         ax: Axes = axes[0]
         ax.plot([0, max(y_pushover) / K], [0, max(y_pushover)], color='gray', ls='--')  # 初始刚度曲线
         ax.hlines(0.8 * max(y_pushover), xmin=0, xmax=max(x_pushover), color='gray', linestyles='--')  # 0.8倍最大基底剪力线
@@ -721,7 +759,14 @@ class DataProcessing:
             ax2.set_ylim(ax.get_ylim()[0] / weight, ax.get_ylim()[1] / weight)
             ax2.set_ylabel('Norm. shear')
             ax2.tick_params(axis='y')
-        ax = axes[1]
+        ax: Axes = axes[1]
+        ax.plot(x_pushover, overturning_moment)
+        ax.set_xlabel('Roof drift (%)')
+        ax.set_ylabel('Overturning moment (kN-m)')
+        ax.set_title('Roof drift - overturning moment')
+        ax.set_xlim(0)
+        ax.set_ylim(0)
+        ax: Axes = axes[2]
         data = np.zeros((self.Nstory + 1, len(FDR_lines) * 2))
         for i, FDR_line in enumerate(FDR_lines):
             ax.plot(FDR_line * 100, np.arange(1, self.Nstory + 2, 1), '-o', label=f'{round(FDR_step[i]*100, 0)}%')
@@ -785,7 +830,7 @@ class DataProcessing:
         plt.xlabel('Roof drift ratio (%)')
         plt.ylabel('Norm. base shear (%)')
         plt.tight_layout()
-        plt.savefig(self.root_out / 'Pushover.png', dpi=600)  # NOTE: Newly added
+        plt.savefig(self.root_out / 'Pushover.png', dpi=600)
         if plot_result:
             plt.show()
         plt.close()
@@ -820,7 +865,7 @@ class DataProcessing:
         col_hinge_stat = np.zeros((5, self.Nstory * 2, self.Nbay + 1))
         panel_zone = np.zeros((self.GM_N, self.Nstory, self.Nbay + 1))  # 节点域变形
         panel_zone_stat = np.zeros((5, self.Nstory, self.Nbay + 1))
-        def MyLoadtxt(path: Path, array: np.ndarray):
+        def my_loadtxt(path: Path, array: np.ndarray):
             try:
                 res = np.loadtxt(path)
             except:
@@ -832,27 +877,27 @@ class DataProcessing:
             if clps == 1:
                 logger.warning(f'{gm_name}发生倒塌！')
             # 最大层间位移角
-            IDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层间位移角.out', IDR[:, idx_gm])
+            IDR[:, idx_gm] = my_loadtxt(self.root_out/gm_name/'层间位移角.out', IDR[:, idx_gm])
             # 屋顶位移角
-            IDRroof[idx_gm] = MyLoadtxt(self.root_out/gm_name/'屋顶层间位移角.out', IDRroof[idx_gm])
+            IDRroof[idx_gm] = my_loadtxt(self.root_out/gm_name/'屋顶层间位移角.out', IDRroof[idx_gm])
             # 层间位移角集中系数
-            DCF[idx_gm] = MyLoadtxt(self.root_out/gm_name/'DCF.out', DCF[idx_gm])
+            DCF[idx_gm] = my_loadtxt(self.root_out/gm_name/'DCF.out', DCF[idx_gm])
             # 最大楼层剪力
-            Shear[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'楼层剪力(kN).out', Shear[:, idx_gm])
+            Shear[:, idx_gm] = my_loadtxt(self.root_out/gm_name/'楼层剪力(kN).out', Shear[:, idx_gm])
             # 累积层间位移角
-            CIDR[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'累积层间位移角.out', CIDR[:, idx_gm])
+            CIDR[:, idx_gm] = my_loadtxt(self.root_out/gm_name/'累积层间位移角.out', CIDR[:, idx_gm])
             # 层速度
-            PFV[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层速度.out', PFV[:, idx_gm])
+            PFV[:, idx_gm] = my_loadtxt(self.root_out/gm_name/'层速度.out', PFV[:, idx_gm])
             # 层加速度
-            PFA[:, idx_gm] = MyLoadtxt(self.root_out/gm_name/'层加速度(g).out', PFA[:, idx_gm])
+            PFA[:, idx_gm] = my_loadtxt(self.root_out/gm_name/'层加速度(g).out', PFA[:, idx_gm])
             # 残余层间位移角
-            RIDR[:, idx_gm] = abs(MyLoadtxt(self.root_out/gm_name/'残余层间位移角.out', RIDR[:, idx_gm]))
+            RIDR[:, idx_gm] = abs(my_loadtxt(self.root_out/gm_name/'残余层间位移角.out', RIDR[:, idx_gm]))
             # 梁铰变形
-            beam_hinge[idx_gm] = MyLoadtxt(self.root_out/gm_name/'梁铰变形.out', beam_hinge[idx_gm])
+            beam_hinge[idx_gm] = my_loadtxt(self.root_out/gm_name/'梁铰变形.out', beam_hinge[idx_gm])
             # 柱铰变形
-            col_hinge[idx_gm] = MyLoadtxt(self.root_out/gm_name/'柱铰变形.out', col_hinge[idx_gm])
+            col_hinge[idx_gm] = my_loadtxt(self.root_out/gm_name/'柱铰变形.out', col_hinge[idx_gm])
             # 节点域变形
-            panel_zone[idx_gm] = MyLoadtxt(self.root_out/gm_name/'节点域变形.out', panel_zone[idx_gm])
+            panel_zone[idx_gm] = my_loadtxt(self.root_out/gm_name/'节点域变形.out', panel_zone[idx_gm])
         # 计算统计特性
         IDR_stat[:, 0] = np.mean(IDR, axis=1)
         IDR_stat[:, 1] = np.std(IDR, axis=1)

@@ -30,7 +30,8 @@ def CyclicPushover(
         maxRunTime: float,
         ShowAnimation: bool,
         min_factor: float=1e-6,
-        max_factor: float=1):
+        max_factor: float=1
+    ) -> int:
 
     ops.wipeAnalysis()
     ops.constraints("Plain")
