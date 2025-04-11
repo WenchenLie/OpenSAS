@@ -74,7 +74,7 @@ proc TimeHistorySolver {
             set factor_old $factor
             set factor [expr {min($factor * 2, $max_factor)}]
             if {$factor_old < $factor} {
-                puts "---- Enlarged factor: $factor, Time: [getTime]"
+                puts "---- Enlarged factor: $factor, Time: [getTime], record duration: $duration"
             }
             incr Id_algorithm -1
             set Id_algorithm [expr {max(0, $Id_algorithm)}]
@@ -88,9 +88,9 @@ proc TimeHistorySolver {
                     puts "Cannot converge"
                     return [list 3 [getTime]]
                 }
-                puts "-------- Switched algorithm: [lindex $ls_algorithms $Id_algorithm], Time: [getTime]"
+                puts "-------- Switched algorithm: [lindex $ls_algorithms $Id_algorithm], Time: [getTime], record duration: $duration"
             }
-            puts "---- Reduced factor: $factor, Time: [getTime]"
+            puts "---- Reduced factor: $factor, Time: [getTime], record duration: $duration"
         }
         set dt [expr $factor * $dt_init]
         if {[expr $dt + [getTime]] > $duration} {

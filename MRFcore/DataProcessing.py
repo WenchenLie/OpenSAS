@@ -75,19 +75,21 @@ class DataProcessing:
                 if Path.exists(self.root/subfolder):
                     print(f'正在检查数据 {subfolder}    \r', end='')
                     try:
-                        file_name = (self.root/subfolder/'Time.out').absolute()
+                        collpse_flag = np.loadtxt(self.root/subfolder/'isCollapsed.dat')
+                        file_name = (self.root/subfolder/'isCollapsed.dat').absolute()
                         assert (self.root/subfolder/'Time.out').exists(), f'未找到文件: {file_name}'
-                    except:
+                    except FileNotFoundError as e:
                         error_dir.append(str(self.root/subfolder))
                         Sa = np.loadtxt(self.root/subfolder/'Sa.dat')
                         error_Sa.append(str(np.round(Sa, 10)))
+                        raise e
                     try:
                         status = int(np.loadtxt(self.root/subfolder/'Status.dat'))
                         file_name = (self.root/subfolder).absolute()
-                        if status == 3:
-                            logger.warning(f'计算不收敛: {file_name}')
-                        elif status == 4:
-                            logger.warning(f'超过最大计算时间: {file_name}')
+                        if status == 3 and collpse_flag == 0:
+                            logger.warning(f'计算不收敛(未倒塌): {file_name}')
+                        elif status == 4 and collpse_flag == 0:
+                            logger.warning(f'超过最大计算时间(未倒塌): {file_name}')
                     except FileNotFoundError as e:
                         file_name = (self.root/subfolder/'Status.dat').absolute()
                         logger.warning(f'找不到 tatus.dat文件 ({file_name})')

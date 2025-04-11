@@ -555,6 +555,12 @@ class WorkerThread(QThread):
                     self.signal_add_log.emit(f'倒塌：否\n')
                 if not os.path.exists(self.main.Output_dir / gm_name):
                     os.makedirs(self.main.Output_dir / gm_name)
+                status = int(np.loadtxt(self.main.Output_dir / gm_name / 'Status.dat'))
+                if status == 2:
+                    if not collapsed:
+                        self.signal_add_warning.emit(f'{gm_name}分析不收敛(未倒塌)')
+                elif status == 3:
+                    self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
             else:
                 module = import_module(f'models.{self.main.model_name}')
                 run_openseespy = getattr(module, 'run_openseespy')
@@ -726,6 +732,12 @@ class WorkerThread(QThread):
                     else:
                         collapsed = 0
                         self.signal_add_log.emit(f'倒塌：否\n')
+                    status = int(np.loadtxt(self.main.Output_dir / f'{gm_name}_{run_num+1}' / 'Status.dat'))
+                    if status == 2:
+                        if not collapsed:
+                            self.signal_add_warning.emit(f'{gm_name}分析不收敛(未倒塌)')
+                    elif status == 3:
+                        self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
                 else:
                     module = import_module(f'models.{self.main.model_name}')
                     run_openseespy = getattr(module, 'run_openseespy')
@@ -1122,7 +1134,7 @@ def run_single_IDA_py(
     """
     try:
         now = lambda: datetime.datetime.now().strftime('%H:%M')
-        message = ('a', f'{gm_name}开始({now()})\n')
+        message = ('a', f'{now()} {gm_name}开始\n')
         if not stop_event.is_set():
             queue.put(message)
         Sa_current = Sa0
@@ -1137,12 +1149,12 @@ def run_single_IDA_py(
         Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
         for run_num in range(max_ana):
             if stop_event.is_set():
-                message = ('b', f'{gm_name}退出计算\n')
+                message = ('b', f'{now()} {gm_name}退出计算\n')
                 queue.put(message)
                 return
             Sa_current = round(Sa_current, 5)
             SF = Sa_current / Sa_original
-            message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
+            message = ('c', f'{now()} {gm_name}第{run_num+1}次计算开始(Sa={Sa_current})\n')
             queue.put(message)
             time_gm_start = time.time()
             # maxRunTime
@@ -1167,12 +1179,12 @@ def run_single_IDA_py(
                 collapsed = 1  # 分析完成，倒塌
             else:
                 collapsed = 0  # 分析完成，未倒塌
-            if result[0] == 2:
-                s = '倒塌'if collapsed else '未倒塌'
-                message = ('g', f'{gm_name}第{run_num+1}次计算不收敛({s})\n')
-                queue.put(message)
-            elif result[0] == 3:
-                message = ('h', f'{gm_name}第{run_num+1}次计算超过最大计算时间\n')
+            if result[0] == 3:
+                if not collapsed:
+                    message = ('g', f'{now()} {gm_name}第{run_num+1}次计算不收敛(未倒塌)\n')
+                    queue.put(message)
+            elif result[0] == 4:
+                message = ('h', f'{now()} {gm_name}第{run_num+1}次计算超过最大计算时间\n')
                 queue.put(message)
             if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
                 os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
@@ -1185,7 +1197,7 @@ def run_single_IDA_py(
                 # 追踪倒塌
                 if run_num == 0 and collapsed == 1:
                     # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                    message = ('e', f'{gm_name}首次计算即倒塌\n')
+                    message = ('e', f'{now()} {gm_name}首次计算即倒塌\n')
                     queue.put(message)
                     return
                 if collapsed == 0 and iter_state == 0:
@@ -1204,9 +1216,9 @@ def run_single_IDA_py(
                     if Sa_l > Sa_r:
                         raise ValueError('最小倒塌强度大于最大未倒塌强度!')
                     if Sa_r - Sa_l < tol:
-                        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+                        message = ('d', f'{now()} {gm_name}第{run_num+1}次计算完成({s})\n')
                         queue.put(message)
-                        message = ('b', f'{gm_name}完成({now()})\n')
+                        message = ('b', f'{now()} {gm_name}完成\n')
                         queue.put(message)
                         return
                     Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
@@ -1214,14 +1226,14 @@ def run_single_IDA_py(
                 # 不追踪倒塌
                 Sa_current += Sa_incr
             s = '倒塌'if collapsed else '未倒塌'
-            message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+            message = ('d', f'{now()} {gm_name}第{run_num+1}次计算完成({s})\n')
             queue.put(message)
         else:
             # 超过最大计算次数
             if trace_collapse:
-                message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+                message = ('f', f'{now()} {gm_name}超过最大计算次数仍未找到倒塌点\n')
                 queue.put(message)
-            message = ('b', f'{gm_name}完成({now()})\n')
+            message = ('b', f'{now()} {gm_name}完成\n')
             queue.put(message)
             return
     except Exception as e:
@@ -1275,7 +1287,7 @@ def run_single_IDA_tcl(
     """
     try:
         now = lambda: datetime.datetime.now().strftime('%H:%M')
-        message = ('a', f'{gm_name}开始({now()})\n')
+        message = ('a', f'{now()} {gm_name}开始\n')
         if not stop_event.is_set():
             queue.put(message)
         Sa_current = Sa0
@@ -1290,12 +1302,12 @@ def run_single_IDA_tcl(
         Sa_l, Sa_r = 0, 100000  # 最大未倒塌强度，最小倒塌强度
         for run_num in range(max_ana):
             if stop_event.is_set():
-                message = ('b', f'{gm_name}退出计算\n')
+                message = ('b', f'{now()} {gm_name}退出计算\n')
                 queue.put(message)
                 return
             Sa_current = round(Sa_current, 5)
             SF = Sa_current / Sa_original
-            message = ('c', f'{gm_name}第{run_num+1}次计算开始_Sa={Sa_current}\n')
+            message = ('c', f'{now()} {gm_name}第{run_num+1}次计算开始(Sa={Sa_current})\n')
             queue.put(message)
             time_gm_start = time.time()
             maxRoofDrift = 0.1
@@ -1316,6 +1328,14 @@ def run_single_IDA_tcl(
                 os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
             else:
                 collapsed = 0
+            status = int(np.loadtxt(Output_dir / f'{gm_name}_{run_num+1}/Status.dat'))
+            if status == 3:
+                if not collapsed:
+                    message = ('g', f'{now()} {gm_name}第{run_num+1}次计算不收敛(未倒塌)\n')
+                    queue.put(message)
+            elif status == 4:
+                message = ('h', f'{now()} {gm_name}第{run_num+1}次计算超过最大计算时间\n')
+                queue.put(message)
             if not os.path.exists(Output_dir / f'{gm_name}_{run_num+1}'):
                 os.makedirs(Output_dir / f'{gm_name}_{run_num+1}')
                 print(Output_dir / f'{gm_name}_{run_num+1}')
@@ -1328,7 +1348,7 @@ def run_single_IDA_tcl(
                 # 追踪倒塌
                 if run_num == 0 and collapsed == 1:
                     # self.signal_add_warning.emit(f'{gm_name}首次计算即倒塌！\n\n')
-                    message = ('e', f'{gm_name}首次计算即倒塌\n')
+                    message = ('e', f'{now()} {gm_name}首次计算即倒塌\n')
                     queue.put(message)
                     return
                 if collapsed == 0 and iter_state == 0:
@@ -1347,9 +1367,9 @@ def run_single_IDA_tcl(
                     if Sa_l > Sa_r:
                         raise ValueError('最小倒塌强度大于最大未倒塌强度!')
                     if Sa_r - Sa_l < tol:
-                        message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+                        message = ('d', f'{now()} {gm_name}第{run_num+1}次计算完成({s})\n')
                         queue.put(message)
-                        message = ('b', f'{gm_name}完成({now()})\n')
+                        message = ('b', f'{now()} {gm_name}完成\n')
                         queue.put(message)
                         return
                     Sa_current = 0.5 * (Sa_l + Sa_r)  # 用于下一次计算的地震强度
@@ -1357,15 +1377,15 @@ def run_single_IDA_tcl(
                 # 不追踪倒塌
                 Sa_current += Sa_incr
             s = '倒塌'if collapsed else '未倒塌'
-            message = ('d', f'{gm_name}第{run_num+1}次计算完成_{s}\n')
+            message = ('d', f'{now()} {gm_name}第{run_num+1}次计算完成({s})\n')
             queue.put(message)
         else:
             # 超过最大计算次数
             if trace_collapse:
-                message = ('f', f'{gm_name}超过最大计算次数仍未找到倒塌点\n')
+                message = ('f', f'{now()} {gm_name}超过最大计算次数仍未找到倒塌点\n')
                 queue.put(message)
                 pass
-            message = ('b', f'{gm_name}完成({now()})\n')
+            message = ('b', f'{now()} {gm_name}完成\n')
             queue.put(message)
             return
     except Exception as e:
@@ -1412,7 +1432,7 @@ def run_single_th(
     """
     try:
         now = lambda: datetime.datetime.now().strftime('%H:%M')
-        message = ('a', f'{gm_name}开始({now()})\n')
+        message = ('a', f'{now()} {gm_name}开始\n')
         queue.put(message)
         time_gm_start = time.time()
         maxRoofDrift = 0.1
@@ -1433,6 +1453,14 @@ def run_single_th(
                 os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
             else:
                 collapsed = 0
+            status = int(np.loadtxt(Output_dir / f'{gm_name}/Status.dat'))
+            if status == 3:
+                if not collapsed:
+                    message = ('g', f'{now()} {gm_name}计算不收敛(未倒塌)\n')
+                    queue.put(message)
+            elif status == 4:
+                message = ('h', f'{now()} {gm_name}计算超过最大计算时间\n')
+                queue.put(message)
         else:
             module = import_module(f'models.{model_name}')
             run_openseespy = getattr(module, 'run_openseespy')
@@ -1458,12 +1486,12 @@ def run_single_th(
                 collapsed = 1  # 分析完成，倒塌
             else:
                 collapsed = 0  # 分析完成，未倒塌
-            if result[0] == 2:
+            if result[0] == 3:
                 s = '倒塌'if collapsed else '未倒塌'
-                message = ('g', f'{gm_name}计算不收敛({s})\n')
+                message = ('g', f'{now()} {gm_name}计算不收敛({s})\n')
                 queue.put(message)
-            elif result[0] == 3:
-                message = ('h', f'{gm_name}计算超过最大计算时间\n')
+            elif result[0] == 4:
+                message = ('h', f'{now()} {gm_name}计算超过最大计算时间\n')
                 queue.put(message)
         if not os.path.exists(Output_dir / f'{gm_name}'):
             os.makedirs(Output_dir / f'{gm_name}')
@@ -1483,7 +1511,7 @@ def run_single_th(
         time_gm_end = time.time()
         time_cost = time_gm_end - time_gm_start
         s = '倒塌'if collapsed else '未倒塌'
-        message = ('b', f'{gm_name}完成_{s}\n')
+        message = ('b', f'{now()} {gm_name}完成_{s}\n')
         queue.put(message)
     except Exception as e:
         tb = traceback.format_exc()
