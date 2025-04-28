@@ -252,7 +252,6 @@ class MRF:
                     raise ValueError('Argument `path_spec_code` should be given')
                 T0 = 0
                 SF = self.Sa(T, Sa_code, T0) / self.Sa(T, RSA, T0)
-                self.GM_SF.append(SF)
             elif method == 'b':
                 if path_spec_code is None:
                     raise ValueError('Argument `path_spec_code` should be given')
@@ -261,7 +260,6 @@ class MRF:
                     self.logger.info(f'Sa(T1) = {self.Sa(T, RSA, T0)}')
                     is_print = False
                 SF = self.Sa(T, Sa_code, T0) / self.Sa(T, RSA, T0)
-                self.GM_SF.append(SF)
             elif method == 'c':
                 if path_spec_code is None:
                     raise ValueError('Argument `path_spec_code` should be given')
@@ -313,8 +311,13 @@ class MRF:
             self.scaled_GM_RSV[idx] = RSV * SF
             self.scaled_GM_RSD[idx] = RSD * SF
             self.GM_SF.append(SF)
-            if save_SF:
-                np.savetxt(self.dir_temp / 'GM_SFs.txt', self.GM_SF)  # 保存缩放系数
+        if save_SF:
+            sf = {}
+            for gm_name, SF in zip(self.GM_names, self.GM_SF):
+                sf[gm_name] = SF
+            json.dump(sf, open(self.dir_temp / 'GM_SFs.json', 'w'), indent=4)
+            file_path = (self.dir_temp / 'GM_SFs.json').absolute().as_posix()
+            self.logger.info(f'已保存地震动缩放系数({file_path})')
         if save_unscaled_spec:
             data_RSA = np.zeros((len(T), self.GM_N + 1))
             data_RSV = np.zeros((len(T), self.GM_N + 1))
@@ -348,7 +351,7 @@ class MRF:
             np.savetxt(self.dir_temp / 'Unscaled_RSA_pct.txt', pct_A, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Unscaled_RSV_pct.txt', pct_V, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Unscaled_RSD_pct.txt', pct_D, fmt='%.5f')
-            self.logger.info(f'已保存未缩放反应谱至temp文件夹')
+            self.logger.info(f'已保存未缩放反应谱({self.dir_temp.absolute().as_posix()})')
         if save_scaled_spec:
             data_RSA = np.zeros((len(T), self.GM_N + 1))
             data_RSV = np.zeros((len(T), self.GM_N + 1))
@@ -382,7 +385,7 @@ class MRF:
             np.savetxt(self.dir_temp / 'Scaled_RSA_pct.txt', pct_A, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Scaled_RSV_pct.txt', pct_V, fmt='%.5f')
             np.savetxt(self.dir_temp / 'Scaled_RSD_pct.txt', pct_D, fmt='%.5f')
-            self.logger.info(f'已保存缩放反应谱至temp文件夹')
+            self.logger.info(f'已保存缩放反应谱({self.dir_temp.absolute().as_posix()})')
         plt.subplot(131)
         if method == 'a':
             plt.scatter(0, Sa_code[0], color='red', zorder=99999)
