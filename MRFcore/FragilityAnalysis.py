@@ -1057,10 +1057,6 @@ class FragilityAnalysis():
         logger.success('已保存数据')
 
     def __del__(self):
-        for _, fig in self.all_figures_1.items():
-            fig.clear()
-        for _, fig in self.all_figures_2.items():
-            fig.clear()
         plt.cla()
         plt.clf()
         plt.close()
