@@ -637,7 +637,7 @@ class DataProcessing:
 
     @staticmethod
     def _get_ductility(x: np.ndarray, y: np.ndarray
-        ) -> tuple[float, float, float, float]:
+        ) -> tuple[float | None, float, float, float | None]:
         """获取推覆曲线的延性系数"""
         y_max = max(y)
         idx_y_max = np.argmax(y)
@@ -645,8 +645,13 @@ class DataProcessing:
         x_k = DataProcessing._get_x(x, y, y_k)
         K = y_k / x_k  # 推覆曲线的初始刚度
         delta_yeff = y_max / K  # 屈服位移
-        delta_u = DataProcessing._get_x(x[idx_y_max:], y[idx_y_max:], 0.8 * y_max)
-        miu = delta_u / delta_yeff
+        try:
+            delta_u = DataProcessing._get_x(x[idx_y_max:], y[idx_y_max:], 0.8 * y_max)
+            miu = delta_u / delta_yeff
+        except ValueError:
+            logger.warning('找不到屈服点')
+            delta_u = None
+            miu = None
         return miu, K, delta_yeff, delta_u
 
     def read_pushover(self, H: float, FDR_step=[0.01*i for i in range(1, 11)], plot_result=True):
@@ -723,7 +728,8 @@ class DataProcessing:
         if has_weight:
             curve_pushover_norm = np.array([x_pushover, y_pushover_norm]).T
         ductility, K, delta_yeff, delta_u = self._get_ductility(x_pushover, y_pushover)
-        print(f'delta_yeff = {delta_yeff:.3f}%, delta_u = {delta_u:.3f}%')
+        if delta_u is not None:
+            print(f'delta_yeff = {delta_yeff:.3f}%, delta_u = {delta_u:.3f}%')
         np.savetxt(self.root_out/'屋顶位移角(%)-基底剪力(kN).txt', curve_pushover)
         np.savetxt(self.root_out/'屋顶位移角(%)-基底倾覆力矩(kN-m).txt', np.column_stack((x_pushover, overturning_moment)))
         if has_weight:
@@ -731,11 +737,13 @@ class DataProcessing:
         else:
             open(self.root_out/'屋顶位移角(%)-归一化基底剪力.txt', 'w')
         np.savetxt(self.root_out/'屋顶位移(mm)-基底剪力(kN).txt', np.array([x_pushover/100*H, shear]).T)
-        np.savetxt(self.root_out/'延性系数.txt', np.array([ductility]), fmt='%.6f')
+        if ductility is not None:
+            np.savetxt(self.root_out/'延性系数.txt', np.array([ductility]), fmt='%.6f')
         print(f'最大基底剪力：{max(y_pushover):.3f} kN')
         print(f'最大基底倾覆力矩：{max(overturning_moment):.3f} kN-m')
         print(f'初始刚度: {K*100:.3f} kN/rad or {K*100/H:.3f} kN/mm')
-        print(f'延性系数：{ductility:.3f}')
+        if ductility is not None:
+            print(f'延性系数：{ductility:.3f}')
         with open(self.root_out/'刚度.txt', 'w') as f:
             f.write(f'初始刚度:\n{K*100:.3f} kN/rad or {K*100/H:.3f} kN/mm\n')
         # 画图
@@ -745,7 +753,8 @@ class DataProcessing:
         ax.hlines(0.8 * max(y_pushover), xmin=0, xmax=max(x_pushover), color='gray', linestyles='--')  # 0.8倍最大基底剪力线
         ax.hlines(max(y_pushover), xmin=0, xmax=max(x_pushover), color='gray', linestyles='--')  # 0.8倍最大基底剪力线
         ax.vlines(delta_yeff, ymin=0, ymax=delta_yeff * K, color='gray', linestyles='--')  # 屈服位移线
-        ax.vlines(delta_u, ymin=0, ymax=0.8 * max(y_pushover), color='gray', linestyles='--')  # 0.8倍基底剪力对应的位移
+        if delta_u is not None:
+            ax.vlines(delta_u, ymin=0, ymax=0.8 * max(y_pushover), color='gray', linestyles='--')  # 0.8倍基底剪力对应的位移
         ax.plot(x_pushover, y_pushover)
         ax.set_xlabel('Roof drift (%)')
         ax.set_ylabel('Shear force (kN)')
