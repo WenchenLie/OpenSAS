@@ -556,10 +556,10 @@ class WorkerThread(QThread):
                 if not os.path.exists(self.main.Output_dir / gm_name):
                     os.makedirs(self.main.Output_dir / gm_name)
                 status = int(np.loadtxt(self.main.Output_dir / gm_name / 'Status.dat'))
-                if status == 2:
+                if status == 3:
                     if not collapsed:
                         self.signal_add_warning.emit(f'{gm_name}分析不收敛(未倒塌)')
-                elif status == 3:
+                elif status == 4:
                     self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
             else:
                 module = import_module(f'models.{self.main.model_name}')
@@ -733,10 +733,10 @@ class WorkerThread(QThread):
                         collapsed = 0
                         self.signal_add_log.emit(f'倒塌：否\n')
                     status = int(np.loadtxt(self.main.Output_dir / f'{gm_name}_{run_num+1}' / 'Status.dat'))
-                    if status == 2:
+                    if status == 3:
                         if not collapsed:
                             self.signal_add_warning.emit(f'{gm_name}分析不收敛(未倒塌)')
-                    elif status == 3:
+                    elif status == 4:
                         self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
                 else:
                     module = import_module(f'models.{self.main.model_name}')
