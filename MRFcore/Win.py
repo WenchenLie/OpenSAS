@@ -71,6 +71,8 @@ class MyWin(QDialog):
     def init_ui(self):
         self.setWindowFlags(Qt.WindowMinMaxButtonsHint)
         self.set_ui_progrsssBar(('初始化中...', 0))
+        self.ui.pushButton_4.clicked.connect(lambda: os.startfile(self.main.cwd))
+        self.ui.pushButton_5.clicked.connect(lambda: os.startfile(self.main.Output_dir))
         if self.running_case == 'TH':
             if self.main.parallel:
                 self.ui.label_3.setText('正在运行：多进程时程分析')

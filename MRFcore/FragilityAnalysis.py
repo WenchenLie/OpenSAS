@@ -1056,8 +1056,8 @@ class FragilityAnalysis():
             self.df_clps_frag.to_csv(output_path / f'倒塌易损性曲线.csv', index=False)
         logger.success('已保存数据')
 
-    def __del__(self):
-        plt.cla()
-        plt.clf()
-        plt.close()
+    # def __del__(self):
+    #     plt.cla()
+    #     plt.clf()
+    #     plt.close()
 
