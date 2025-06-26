@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-from math import inf
 from pathlib import Path
 from typing import Literal
 
@@ -14,18 +13,11 @@ from matplotlib.figure import Figure
 from scipy.stats import norm
 from scipy.interpolate import interp1d
 from loguru import logger
-from MRFcore.get_SSF import get_SFF
-from MRFcore.get_acceptable_ACMR import get_acceptable_ACMR
-if __name__ == "__main__":
-    sys.path.append(str(Path(__file__).parent.parent))
 
-"""
-最后更新：
-2024-04-07: 优化画图代码，增加保存结果图像文件
-2024-05-31: 功能增强，可同时处理多种工程需求参数类型，代码结构优化
-2024-11-10：增加风险评估功能
-2024-12-13: 代码结构优化
-"""
+from .get_SSF import get_SFF
+from .get_acceptable_ACMR import get_acceptable_ACMR
+from ._utils import Point, Curve, AutoDict
+
 
 logger.remove()
 logger.add(
@@ -235,6 +227,8 @@ class FragilityAnalysis():
         self.DS: dict[str, dict[str, float]] = {}  # 损伤状态及对应标签
         self.beta: dict[str, float] = {}  # 不确定性系数
         self.info: dict[str, str] = {}  # 记录拟合参数
+        # calc_story_demand
+        self.story_demand = None
         # exceedance_probability
         self.DM_has_fixed_beta: dict[str, float] = {}  # 指定了固定不确定性beta_TOT的DM类型
         self.exceed_mean: dict[str, float]  = {}  # 超越概率均值
@@ -585,6 +579,99 @@ class FragilityAnalysis():
         ax.set_xlabel('IM')
         ax.set_ylabel('Exceeding probability')
         logger.success('已完成易损性函数计算和概率需求模型的拟合')
+
+    def calc_story_demand(self):
+        """计算各个楼层的PSDM，所得结果用于进行经济损失评估
+        """
+        logger.info('正在计算各楼层的地震需求')
+        curve_maxIDR = Curve('MaxIDR')
+        curve_maxRIDR = Curve('MaxRIDR')
+        curve_maxPFA = Curve('MaxPFA')
+        curves_IDR: list[Curve] = [Curve(f'Story-{i}') for i in range(1, self.Nstory + 1)]  # 各楼层IDR-im曲线
+        curves_RIDR: list[Curve] = [Curve(f'Story-{i}') for i in range(1, self.Nstory + 1)]  # 各楼层IDR-im曲线
+        curves_PFA: list[Curve] = [Curve(f'Story-{i}') for i in range(1, self.Nstory + 1)]  # 各楼层PFA-im曲线
+        # curves_PFV: list[Curve] = [Curve(f'Story-{i}') for i in range(1, self.Nstory + 1)]  # 各楼层PFV-im曲线
+        for idx_gm, gm_name in enumerate(self.GM_names):
+            print(f'  正在读取地震动`{gm_name}` ({idx_gm+1}/{self.GM_N})      \r', end='')
+            j = 0
+            while True:
+                j += 1
+                subfolder = self.root / f'{gm_name}_{j}'
+                if not subfolder.exists():
+                    break
+                clps: bool = bool(np.loadtxt(subfolder / '倒塌判断.out'))
+                if clps:
+                    continue
+                im = float(np.loadtxt(subfolder / 'Sa.out'))
+                # 1 IDR
+                data = np.loadtxt(subfolder / '层间位移角.out')[1:]
+                for idx_story, val in enumerate(data):
+                    curve_IDR = curves_IDR[idx_story]
+                    curve_IDR.add_point(Point(im, val))
+                curve_maxIDR.add_point(Point(im, np.max(np.abs(data))))
+                # 2 PFA
+                data = np.loadtxt(subfolder / '层加速度(g).out')
+                for idx_story, val in enumerate(data):
+                    curve_PFA = curves_PFA[idx_story]
+                    curve_PFA.add_point(Point(im, val))
+                curve_maxPFA.add_point(Point(im, np.max(np.abs(data))))
+                # 3 RIDR
+                data = np.loadtxt(subfolder / '残余层间位移角.out')[1:]
+                for idx_story, val in enumerate(data):
+                    curve_RIDR = curves_RIDR[idx_story]
+                    curve_RIDR.add_point(Point(im, np.abs(val)))
+                curve_maxRIDR.add_point(Point(im, np.max(np.abs(data))))
+                # 4 PFV
+                ...
+        print('\r', end='')
+
+        story_demand = AutoDict()
+        story_demand['//'] = "(ln(DM) = A + B * ln(IM))"
+        for idx_story in range(self.Nstory):
+            story = idx_story + 1
+            floor = story + 1
+            curve_logMaxIDR = curve_maxIDR.logarithmize()
+            curve_logMaxPFA = curve_maxPFA.logarithmize()
+            curve_logMaxRIDR = curve_maxRIDR.logarithmize()
+            curve_logIDR = curves_IDR[idx_story].logarithmize()
+            curve_logPFA = curves_PFA[idx_story].logarithmize()
+            curve_logRIDR = curves_RIDR[idx_story].logarithmize()
+            # IDR
+            B, A, R, log_std = curve_logIDR.linear_fitting()
+            story_demand['IDR'][story]['A'] = A
+            story_demand['IDR'][story]['B'] = B
+            story_demand['IDR'][story]['R2'] = R ** 2
+            story_demand['IDR'][story]['log_std'] = log_std
+            # PFA
+            B, A, R, log_std = curve_logPFA.linear_fitting()
+            story_demand['PFA'][story]['A'] = A
+            story_demand['PFA'][story]['B'] = B
+            story_demand['PFA'][story]['R2'] = R ** 2
+            story_demand['PFA'][story]['log_std'] = log_std
+            # RIDR
+            B, A, R, log_std = curve_logRIDR.linear_fitting()
+            story_demand['RIDR'][story]['A'] = A
+            story_demand['RIDR'][story]['B'] = B
+            story_demand['RIDR'][story]['R2'] = R ** 2
+            story_demand['RIDR'][story]['log_std'] = log_std
+            # PFV
+            ...
+        B, A, R, log_std = curve_logMaxIDR.linear_fitting()
+        story_demand['IDR']['Maximum']['A'] = A
+        story_demand['IDR']['Maximum']['B'] = B
+        story_demand['IDR']['Maximum']['R2'] = R ** 2
+        story_demand['IDR']['Maximum']['log_std'] = log_std
+        B, A, R, log_std = curve_logMaxPFA.linear_fitting()
+        story_demand['PFA']['Maximum']['A'] = A
+        story_demand['PFA']['Maximum']['B'] = B
+        story_demand['PFA']['Maximum']['R2'] = R ** 2
+        story_demand['PFA']['Maximum']['log_std'] = log_std
+        B, A, R, log_std = curve_logMaxRIDR.linear_fitting()
+        story_demand['RIDR']['Maximum']['A'] = A
+        story_demand['RIDR']['Maximum']['B'] = B
+        story_demand['RIDR']['Maximum']['R2'] = R ** 2
+        story_demand['RIDR']['Maximum']['log_std'] = log_std
+        self.story_demand = story_demand
 
     def exceedance_probability(self,
             EDP_type: str,
@@ -1039,6 +1126,9 @@ class FragilityAnalysis():
             if EDP_type in self.info.keys():
                 with open(output_path / f'概率特征_{EDP_type}.out', 'w') as f:
                     f.write(self.info[EDP_type])
+        # 保存楼层地震需求
+        if self.story_demand is not None:
+            json.dump(self.story_demand, open(output_path / f'story_demand.json', 'w'), indent=4)
         # 保存风险评估结果
         if self.has_risk_data:
             for EDP_type in self.risk_EDP_hazard_curves.keys():
@@ -1055,9 +1145,4 @@ class FragilityAnalysis():
                 json.dump(self.collapse_intensity, f, indent=4)
             self.df_clps_frag.to_csv(output_path / f'倒塌易损性曲线.csv', index=False)
         logger.success('已保存数据')
-
-    # def __del__(self):
-    #     plt.cla()
-    #     plt.clf()
-    #     plt.close()
 

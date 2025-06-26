@@ -23,9 +23,9 @@ set GMpoints 5590;  # $$$
 set GMduration 55.89;  # $$$
 set FVduration 30;  # $$$
 set EqSF 2.0;  # $$$
-set GMFile "F:/MRF/GMs/$GMname.th";  # $$$
-set subroutines "F:/MRF/subroutines";  # $$$
-set temp "F:/MRF/temp";  # $$$
+set GMFile "F:/Projects/OpenSAS/GMs/$GMname.th";  # $$$
+set subroutines "F:/Projects/OpenSAS/subroutines";  # $$$
+set temp "F:/Projects/OpenSAS/temp";  # $$$
 
 # Sourcing subroutines
 cd $subroutines;
@@ -258,6 +258,7 @@ recorder Node -file $MainFolder/$SubFolder/Disp2.out -node 11020204 -dof 1 disp;
 recorder Node -file $MainFolder/$SubFolder/Disp3.out -node 11030204 -dof 1 disp;
 recorder Node -file $MainFolder/$SubFolder/Disp4.out -node 11040204 -dof 1 disp;
 recorder Node -file $MainFolder/$SubFolder/Disp5.out -node 11050204 -dof 1 disp;
+recorder Node -binary $MainFolder/$SubFolder/Disp5.bin -node 11050204 -dof 1 disp;
 
 # Shear forces
 recorder Element -file $MainFolder/$SubFolder/Shear1_1.out -ele 10010101 force;  recorder Element -file $MainFolder/$SubFolder/Shear1_2.out -ele 10010201 force;  recorder Element -file $MainFolder/$SubFolder/Shear1_3.out -ele 10010301 force;  recorder Element -file $MainFolder/$SubFolder/Shear1_4.out -ele 10010401 force;
