@@ -35,7 +35,7 @@ logger.add(
 )
 
 
-class MRF:
+class Model:
     # 注：
     # (1) 代码仅支持Windows系统
     # (2) 导入的地震动、反应谱单位均默认为g

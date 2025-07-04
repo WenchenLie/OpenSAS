@@ -2,7 +2,7 @@ from __future__ import annotations
 import multiprocessing.queues
 from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
-    from .MRF import MRF
+    from .Model import MRF
 import os
 import sys
 import re

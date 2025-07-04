@@ -16,7 +16,7 @@ from scipy.interpolate import interp1d
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from MRFcore.WriteOrigin import WriteOrigin
+from MRFcore.write_origin import WriteOrigin
 
 
 logger.remove()

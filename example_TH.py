@@ -1,17 +1,15 @@
-import sys
 from pathlib import Path
-sys.path.append(Path.cwd().as_posix())
-from MRFcore.MRF import MRF
-from MRFcore.DataProcessing import DataProcessing
+from MRFcore.model import Model
+from MRFcore.data_processing import DataProcessing
 
 
 if __name__ == "__main__":
 
-    output_folder = Path(r'H:\MRF_results\test\MRF4S_PO')
+    output_folder = Path(r'H:\MRF_results\test\MRF4S_TH')
     
     # 1. Perform time history analysis
     note = 'time history of a four-story steel moment resisting frame'
-    model = MRF('MRF4S', N=4, notes=note, script='tcl')
+    model = Model('MRF4S', Nstory=4, Nbay=3, notes=note, script='tcl')
     model.select_ground_motions([f'th{i}' for i in range(1, 11)], suffix='.th')
     T1 = 1.242
     model.scale_ground_motions(method='i', para=(T1, 1))
