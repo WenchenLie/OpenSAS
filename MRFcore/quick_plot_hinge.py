@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 
-def QuakePlotHinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None, axis: int=None, position: Literal['B', 'T', 'L', 'R']=None):
+def quick_plot_hinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None, axis: int=None, position: Literal['B', 'T', 'L', 'R']=None):
     folder = Path(folder)
     if not folder.exists():
         raise ValueError(f'`{folder}`不存在')
@@ -33,7 +33,7 @@ def QuakePlotHinge(folder: Path, hinge: Literal['b', 'c', 'pz'], floor: int=None
 if __name__ == "__main__":
 
     folder = Path(r'H:/MRF_results/test/4SMRF/Pushover')
-    theta, M = QuakePlotHinge(folder, hinge='b', floor=4, axis=1, position='R')
+    theta, M = quick_plot_hinge(folder, hinge='b', floor=4, axis=1, position='R')
     plt.plot(theta, -M)
     plt.xlabel('theta [rad]')
     plt.ylabel('M [kN-m]')

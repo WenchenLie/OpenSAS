@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-def QuakeReadPushover(folder: Path):
+
+def quick_read_pushover(folder: Path):
 
     folder = Path(folder)
     weight = 0
@@ -36,6 +37,6 @@ def QuakeReadPushover(folder: Path):
 if __name__ == "__main__":
     
     folder = Path(r'E:\MRF_results\test\4SMRF')
-    QuakeReadPushover(folder)
+    quick_read_pushover(folder)
 
 

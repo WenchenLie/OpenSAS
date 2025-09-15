@@ -1,7 +1,7 @@
 from pathlib import Path
 from MRFcore.model import Model
 from MRFcore.data_processing import DataProcessing
-from MRFcore.quake_read_pushover import QuakeReadPushover
+from MRFcore.quick_read_pushover import quick_read_pushover
 
 
 if __name__ == "__main__":
