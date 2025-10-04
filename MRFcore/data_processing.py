@@ -679,6 +679,8 @@ class DataProcessing:
             if item.is_file() and 'Support' in str(item):
                 has_weight = True
                 weight += np.loadtxt(item)[10, 1] / 1000
+        if weight == 0:
+            has_weight = False
         print(f'weight = {weight:.3f} kN')
         # 底部剪力
         shear = np.zeros(n)

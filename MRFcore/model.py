@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 from seismicutils import Records
 
 from .Win import MyWin
-from .Spectrum import Spectrum
+from .spectrum import spectrum
 
 
 logger.remove()
@@ -243,7 +243,7 @@ class Model:
         for idx, gm_name in enumerate(self.GM_names):
             print(f'正在缩放地震动...({idx+1}/{self.GM_N})     \r', end='')
             th = np.loadtxt(self.dir_gm / f'{gm_name}{self.suffix}')
-            RSA, RSV, RSD = Spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
+            RSA, RSV, RSD = spectrum(ag=th, dt=self.GM_dts[idx], T=T)  # 计算地震动反应谱
             self.GM_RSA[idx] = RSA
             self.GM_RSV[idx] = RSV
             self.GM_RSD[idx] = RSD    

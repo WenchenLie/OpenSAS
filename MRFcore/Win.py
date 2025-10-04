@@ -2,7 +2,7 @@ from __future__ import annotations
 import multiprocessing.queues
 from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
-    from .Model import MRF
+    from .model import Model
 import os
 import sys
 import re
@@ -31,14 +31,14 @@ from ui.Win_running import Ui_Win_running
 class MyWin(QDialog):
 
     def __init__(
-            self, main: MRF,
+            self, main: Model,
             running_case: Literal['IDA', 'TH', 'PO', 'CP'],
             IDA_para: tuple,
             print_result: bool):
         """IDA分析
 
         Args:
-            main (MRF): MRF类\n
+            main (Model): Model类\n
             running_case (str): 运行工况，'IDA', 'th'或'pushover'\n
             IDA_para (tuple): IDA参数\n
             * `T0`: 一阶周期
@@ -254,7 +254,7 @@ class WorkerThread(QThread):
     signal_send_openseespy_paras = pyqtSignal(list)  # openseespy调用参数
 
 
-    def __init__(self, main: MRF, mainWin: MyWin):
+    def __init__(self, main: Model, mainWin: MyWin):
         super().__init__()
         self.main = main
         self.mainWin = mainWin
@@ -557,7 +557,11 @@ class WorkerThread(QThread):
                     self.signal_add_log.emit(f'倒塌：否\n')
                 if not os.path.exists(self.main.Output_dir / gm_name):
                     os.makedirs(self.main.Output_dir / gm_name)
-                status = int(np.loadtxt(self.main.Output_dir / gm_name / 'Status.dat'))
+                try:
+                    status = int(np.loadtxt(self.main.Output_dir / gm_name / 'Status.dat'))
+                except FileNotFoundError as e:
+                    self.signal_add_warning.emit(f'{gm_name}分析失败，请检查模型')
+                    raise e
                 if status == 3:
                     if not collapsed:
                         self.signal_add_warning.emit(f'{gm_name}分析不收敛(未倒塌)')
@@ -661,8 +665,6 @@ class WorkerThread(QThread):
             self.get_queue(queue)
             for result in results:
                 output = result.get()
-            pool.close()
-            pool.join()
         self.signal_finished.emit(1)
     
 
@@ -734,7 +736,11 @@ class WorkerThread(QThread):
                     else:
                         collapsed = 0
                         self.signal_add_log.emit(f'倒塌：否\n')
-                    status = int(np.loadtxt(self.main.Output_dir / f'{gm_name}_{run_num+1}' / 'Status.dat'))
+                    try:
+                        status = int(np.loadtxt(self.main.Output_dir / gm_name / 'Status.dat'))
+                    except FileNotFoundError as e:
+                        self.signal_add_warning.emit(f'{gm_name}分析失败，请检查模型')
+                        raise e
                     if status == 3:
                         if not collapsed:
                             self.signal_add_warning.emit(f'{gm_name}分析不收敛(未倒塌)')
@@ -872,8 +878,6 @@ class WorkerThread(QThread):
             self.get_queue(queue)
             for result in results:
                 output = result.get()
-            pool.close()
-            pool.join()
         self.signal_finished.emit(1)
     
 
@@ -918,8 +922,6 @@ class WorkerThread(QThread):
             for i in range(self.main.GM_N):
                 pool.apply_async(run_single_IDA_tcl, ls_paras[i])  # 设置进程池
             self.get_queue(queue)
-            pool.close()
-            pool.join()
         self.signal_finished.emit(1)
 
 
@@ -1330,7 +1332,12 @@ def run_single_IDA_tcl(
                 os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
             else:
                 collapsed = 0
-            status = int(np.loadtxt(Output_dir / f'{gm_name}_{run_num+1}/Status.dat'))
+            try:
+                status = int(np.loadtxt(Output_dir / f'{gm_name}_{run_num+1}/Status.dat'))
+            except FileNotFoundError as e:
+                message = ('g', f'{now()} {gm_name}分析失败，请检查模型\n')
+                queue.put(message)
+                raise e
             if status == 3:
                 if not collapsed:
                     message = ('g', f'{now()} {gm_name}第{run_num+1}次计算不收敛(未倒塌)\n')
@@ -1455,7 +1462,12 @@ def run_single_th(
                 os.remove(dir_temp / f'{gm_name}_CollapseState.txt')
             else:
                 collapsed = 0
-            status = int(np.loadtxt(Output_dir / f'{gm_name}/Status.dat'))
+            try:
+                status = int(np.loadtxt(Output_dir / f'{gm_name}/Status.dat'))
+            except FileNotFoundError as e:
+                message = ('g', f'{now()} {gm_name}分析失败，请检查模型\n')
+                queue.put(message)
+                raise e
             if status == 3:
                 if not collapsed:
                     message = ('g', f'{now()} {gm_name}计算不收敛(未倒塌)\n')
