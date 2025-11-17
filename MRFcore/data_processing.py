@@ -849,7 +849,7 @@ class DataProcessing:
         plt.close()
         logger.success('完成     ')
 
-    def read_th(self):
+    def read_th(self, write_origin: bool=True):
         """读取时程分析"""
         if not self.running_case == 'TH':
             logger.warning('【Error】方法read_th仅限用于时程分析工况')
@@ -1035,37 +1035,38 @@ class DataProcessing:
         panel_zone_stat_50th.to_csv(self.root_out/'结果统计'/'节点域_统计_50th.csv', encoding='ANSI', float_format='%.6f')
         panel_zone_stat_84th.to_csv(self.root_out/'结果统计'/'节点域_统计_84th.csv', encoding='ANSI', float_format='%.6f')
         # 写入origin
-        logger.info('正在写入Origin文件...')
-        all_data: dict[str, tuple[pd.DataFrame, pd.DataFrame, str]] = {
-            # y_lname: [data, data_stat, x_lname, unit]
-            'IDR': (IDR, IDR_stat, ''),
-            'IDRroof': (IDRroof, IDRroof_stat, ''),
-            'DCF': (DCF, DCF_stat, ''),
-            'Shear': (Shear, Shear_stat, 'kN'),
-            'CIDR': (CIDR, CIDR_stat, ''),
-            'PFV': (PFV, PFV_stat, 'mm/s'),
-            'PFA': (PFA, PFA_stat, 'g'),
-            'RIDR': (RIDR, RIDR_stat, ''),
-        }
-        if not self.attached_opju:
-            file_path = self.root_out / f'{self.root_out.stem}.opju'
-        else:
-            file_path = self.attached_opju
-        with WriteOrigin(op, file_path, self.root_out.stem):
-            # writer.delete_obj('Book1')  # 删除自动生成的workbook
-            for y_lname, valus in all_data.items():
-                data, data_stat, unit = valus
-                wb = op.new_book('w', y_lname)
-                ws: WSheet = wb[0]
-                ws.name = y_lname
-                ws.from_list(0, data.index, lname='Story', units='')  # X列
-                ws.from_df(data, c1=1)  # Y列
-                ws.set_labels([unit] * len(data.columns), 'U', offset=1)  # 各楼层Y列单位
-                ws.set_labels(['Individual'] * len(data.columns), 'C', offset=1)  # 各楼层Y列注释
-                ws.from_df(data_stat, c1=len(data.columns) + 1)  # 统计特征Y列
-                ws.set_labels([unit] * 5, 'U', offset=len(data.columns) + 1)  # 统计特征Y列单位
-                ws.set_labels(['Mean', 'STD', '16%', '50%', '84%'], 'C', offset=len(data.columns) + 1)  # 统计特征Y列注释
-                ws.set_labels([y_lname] * (ws.cols - 1), 'L', offset=1)  # 所有Y列长名称
+        if write_origin:
+            logger.info('正在写入Origin文件...')
+            all_data: dict[str, tuple[pd.DataFrame, pd.DataFrame, str]] = {
+                # y_lname: [data, data_stat, x_lname, unit]
+                'IDR': (IDR, IDR_stat, ''),
+                'IDRroof': (IDRroof, IDRroof_stat, ''),
+                'DCF': (DCF, DCF_stat, ''),
+                'Shear': (Shear, Shear_stat, 'kN'),
+                'CIDR': (CIDR, CIDR_stat, ''),
+                'PFV': (PFV, PFV_stat, 'mm/s'),
+                'PFA': (PFA, PFA_stat, 'g'),
+                'RIDR': (RIDR, RIDR_stat, ''),
+            }
+            if not self.attached_opju:
+                file_path = self.root_out / f'{self.root_out.stem}.opju'
+            else:
+                file_path = self.attached_opju
+            with WriteOrigin(op, file_path, self.root_out.stem):
+                # writer.delete_obj('Book1')  # 删除自动生成的workbook
+                for y_lname, valus in all_data.items():
+                    data, data_stat, unit = valus
+                    wb = op.new_book('w', y_lname)
+                    ws: WSheet = wb[0]
+                    ws.name = y_lname
+                    ws.from_list(0, data.index, lname='Story', units='')  # X列
+                    ws.from_df(data, c1=1)  # Y列
+                    ws.set_labels([unit] * len(data.columns), 'U', offset=1)  # 各楼层Y列单位
+                    ws.set_labels(['Individual'] * len(data.columns), 'C', offset=1)  # 各楼层Y列注释
+                    ws.from_df(data_stat, c1=len(data.columns) + 1)  # 统计特征Y列
+                    ws.set_labels([unit] * 5, 'U', offset=len(data.columns) + 1)  # 统计特征Y列单位
+                    ws.set_labels(['Mean', 'STD', '16%', '50%', '84%'], 'C', offset=len(data.columns) + 1)  # 统计特征Y列注释
+                    ws.set_labels([y_lname] * (ws.cols - 1), 'L', offset=1)  # 所有Y列长名称
 
 
 if __name__ == "__main__":

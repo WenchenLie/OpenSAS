@@ -227,8 +227,9 @@ class FragilityAnalysis():
         self.DS: dict[str, dict[str, float]] = {}  # 损伤状态及对应标签
         self.beta: dict[str, float] = {}  # 不确定性系数
         self.info: dict[str, str] = {}  # 记录拟合参数
-        # calc_story_demand
+        # calc_EDP_mat
         self.story_demand = None
+        self.edp_mat = None
         # exceedance_probability
         self.DM_has_fixed_beta: dict[str, float] = {}  # 指定了固定不确定性beta_TOT的DM类型
         self.exceed_mean: dict[str, float]  = {}  # 超越概率均值
@@ -580,10 +581,10 @@ class FragilityAnalysis():
         ax.set_ylabel('Exceeding probability')
         logger.success('已完成易损性函数计算和概率需求模型的拟合')
 
-    def calc_story_demand(self):
-        """计算各个楼层的PSDM，所得结果用于进行经济损失评估
+    def calc_EDP_matrix(self):
+        """计算各个楼层的PSDM和工程需求参数矩阵，所得结果用于进行经济损失评估
         """
-        logger.info('正在计算各楼层的地震需求')
+        logger.info('正在计算工程需求参数矩阵')
         curve_maxIDR = Curve('MaxIDR')
         curve_maxRIDR = Curve('MaxRIDR')
         curve_maxPFA = Curve('MaxPFA')
@@ -672,6 +673,24 @@ class FragilityAnalysis():
         story_demand['RIDR']['Maximum']['R2'] = R ** 2
         story_demand['RIDR']['Maximum']['log_std'] = log_std
         self.story_demand = story_demand
+        
+        # 计算工程需求参数矩阵
+        # 各行代表一次分析，各列依次代表: im, maxIDR, IDR1, IDR2, ..., maxPFA, PFA1, PFA2, ..., maxRIDR
+        # 共4 + Nstory * 2列
+        im_ls = curve_IDR.x
+        edp_mat = im_ls.reshape(-1, 1)
+        columns = ['IM', 'MaxIDR'] + [f'IDR{i+1}' for i in range(self.Nstory)] +\
+                      ['MaxPFA'] + [f'PFA{i+1}' for i in range(self.Nstory)] +\
+                      ['MaxRIDR']
+        edp_mat = np.hstack((edp_mat, curve_maxIDR.y.reshape(-1, 1)))
+        for i in range(self.Nstory):
+            edp_mat = np.hstack((edp_mat, curves_IDR[i].y.reshape(-1, 1)))
+        edp_mat = np.hstack((edp_mat, curve_maxPFA.y.reshape(-1, 1)))
+        for i in range(self.Nstory):
+            edp_mat = np.hstack((edp_mat, curves_PFA[i].y.reshape(-1, 1)))
+        edp_mat = np.hstack((edp_mat, curve_maxRIDR.y.reshape(-1, 1)))
+        edp_mat = pd.DataFrame(edp_mat, columns=columns, index=None)
+        self.edp_mat = edp_mat
 
     def exceedance_probability(self,
             EDP_type: str,
@@ -1129,6 +1148,8 @@ class FragilityAnalysis():
         # 保存楼层地震需求
         if self.story_demand is not None:
             json.dump(self.story_demand, open(output_path / f'story_demand.json', 'w'), indent=4)
+        if self.edp_mat is not None:
+            self.edp_mat.to_csv(output_path / f'EDP_matrix.csv', index=False)
         # 保存风险评估结果
         if self.has_risk_data:
             for EDP_type in self.risk_EDP_hazard_curves.keys():

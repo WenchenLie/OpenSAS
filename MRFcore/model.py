@@ -609,7 +609,7 @@ class Model:
         for idx in range(self.GM_N):
             print(f'正在计算地震动反应谱...({idx+1}/{self.GM_N})     \r', end='')
             th = np.loadtxt(self.dir_gm / f'{self.GM_names[idx]}{self.suffix}')
-            RSA, RSV, RSD = Spectrum(th, self.GM_dts[idx], T)
+            RSA, RSV, RSD = spectrum(th, self.GM_dts[idx], T)
             self.GM_RSA[idx] = RSA
             self.GM_RSV[idx] = RSV
             self.GM_RSD[idx] = RSD
