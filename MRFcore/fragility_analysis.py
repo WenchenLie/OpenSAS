@@ -774,10 +774,12 @@ class FragilityAnalysis():
         z = norm.ppf(np.clip(exceed_y, epsilon, 1 - epsilon))
         lnIM = np.log(exceed_x)
         A = np.vstack([z, np.ones_like(z)]).T  # 线性最小二乘法拟合
-        beta_calc, ln_theta = np.linalg.lstsq(A, lnIM, rcond=None)[0]  # 对数标准差，对数中值
-        theta = np.exp(ln_theta)
-        # theta = np.median(exceed_x)  # 取中值
-        # beta_calc = np.std(np.log(exceed_x), ddof=1)  # 对数标准差
+        # 方法1: 中值、对数标准差根据最小二乘法拟合得到1
+        # beta_calc, ln_theta = np.linalg.lstsq(A, lnIM, rcond=None)[0]  # 对数标准差，对数中值
+        # theta = np.exp(ln_theta)
+        # 方法2: 中值、对数标准差根据样本统计特征计算得到
+        theta = np.median(exceed_x)  # 取中值
+        beta_calc = np.std(np.log(exceed_x), ddof=1)  # 对数标准差
         IM1, IM2 = 0.001, max(exceed_x) * 1.2  # 坐标范围
         exceed_x_fit = np.linspace(IM1, IM2, 1001)  # 超越概率曲线横坐标(IM)
         exceed_y_fit = norm.cdf(np.log(exceed_x_fit / theta) / beta_calc, 0, 1)  # 超越概率曲线横坐标(超越概率)

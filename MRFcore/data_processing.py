@@ -823,6 +823,16 @@ class DataProcessing:
                 shear += np.loadtxt(item)[11:, 0] / 1000
         if abs(min(shear[:20])) > abs(max(shear[:20])):
             shear *= -1
+        # 倾覆力矩
+        pattern = np.loadtxt(self.root/'Cyclic_pushover/Pattern.out')
+        pattern = pattern / np.sum(pattern)  # 归一化
+        lateral_load = np.zeros((self.Nstory, len(shear)))  # 各楼层的侧向力
+        overturning_moment = np.zeros_like(shear)  # 底部倾覆力矩(kN-m)
+        print('侧向力分布: ', pattern)
+        H_ = np.array([np.sum(self.heights[:i+1]) for i in range(self.Nstory)])
+        for i in range(self.Nstory):
+            lateral_load[i] = shear * pattern[i]
+            overturning_moment += lateral_load[i] * H_[i] / 1000  # kN-m
         # 归一化楼层位移角(各层位移除以结构总高)
         RDR = np.loadtxt(CP_path / f'SDR_Roof.out')[11:]
         # cyclic pushover滞回曲线
@@ -831,17 +841,24 @@ class DataProcessing:
         # 输出
         np.savetxt(self.root_out/'屋顶位移角-基底剪力(kN).txt', np.column_stack((RDR, shear)))
         np.savetxt(self.root_out/'屋顶位移角(%)-归一化基底剪力(%).txt', np.column_stack((x_cp, y_cp)))
+        np.savetxt(self.root_out/'屋顶位移角(%)-基底倾覆力矩(kN-m).txt', np.column_stack((x_cp, overturning_moment)))
         # 画图
-        plt.subplot(121)
+        plt.figure(figsize=(18, 6))
+        plt.subplot(131)
         plt.title('Roof drift - shear force')
         plt.plot(RDR, shear)
         plt.xlabel('Roof drift ratio')
         plt.ylabel('Base shear (kN)')
-        plt.subplot(122)
+        plt.subplot(132)
         plt.title('Roof drift - norm. shear force')
         plt.plot(x_cp, y_cp)
         plt.xlabel('Roof drift ratio (%)')
         plt.ylabel('Norm. base shear (%)')
+        plt.subplot(133)
+        plt.title('Roof drift - overturning moment')
+        plt.plot(x_cp, overturning_moment)
+        plt.xlabel('Roof drift ratio (%)')
+        plt.ylabel('Overturning moment (kN-m)')
         plt.tight_layout()
         plt.savefig(self.root_out / 'Pushover.png', dpi=600)
         if plot_result:
