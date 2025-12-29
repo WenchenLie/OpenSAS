@@ -19,7 +19,7 @@ def spectrum(
         algorithm (Literal['NJ', 'NM'], optional): 算法，NJ: Nigam-Jennings精确解，NM: Newmark-β直接积分
     
     Returns:
-        tuple[np.ndarray, np.ndarray, np.ndarray]: 谱加速度(伪加速度)、谱速度、谱位移
+        tuple[np.ndarray, np.ndarray, np.ndarray]: 伪加速度谱、速度谱、位移谱
     """
     ...
     
