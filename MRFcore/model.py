@@ -70,7 +70,7 @@ class Model:
         self.script = script
         model_file = self.dir_model / f'{model_name}.{script}'
         if not model_file.exists():
-            logger.error(f'无法找到模型 ({model_file.as_posix()})')
+            logger.error(f'无法找到模型 ({model_file.absolute().as_posix()})')
             raise ValueError('【Error】无法找到模型！')
         with open(self.dir_model / (f'{model_name}.{script}'), 'r') as f:
             self.script_text = f.read()
