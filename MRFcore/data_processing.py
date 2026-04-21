@@ -795,6 +795,8 @@ class DataProcessing:
             plt.show()
         plt.close()
         logger.success('完成     ')
+        
+        return x_pushover, y_pushover
 
     def read_cyclic_pushover(self, H: float,  plot_result=True):
         """读取循环pushover分析结果
@@ -865,6 +867,8 @@ class DataProcessing:
             plt.show()
         plt.close()
         logger.success('完成     ')
+        
+        return RDR, shear
 
     def read_th(self, write_origin: bool=True):
         """读取时程分析"""
