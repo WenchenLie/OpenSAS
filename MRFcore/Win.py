@@ -11,6 +11,7 @@ import multiprocessing
 import subprocess
 import datetime
 import traceback
+import psutil
 import numpy as np
 from pathlib import Path
 from typing import Literal
@@ -241,18 +242,15 @@ class MyWin(QDialog):
     def get_openseespy_paras(self, paras: list):
         self.openseespy_paras = paras
 
-
 class WorkerThread(QThread):
     """opensees求解子线程
     """
-
     signal_set_ui = pyqtSignal(tuple)  # 运行过程中显示dt，NPTS等
     signal_set_progressBar = pyqtSignal(tuple)  # 运行过程中设置进度条
     signal_finished = pyqtSignal(int)  # 运行完成
     signal_add_log = pyqtSignal(str)  # 增加日志内容
     signal_add_warning = pyqtSignal(str)  # 增加警告内容
     signal_send_openseespy_paras = pyqtSignal(list)  # openseespy调用参数
-
 
     def __init__(self, main: Model, mainWin: MyWin):
         super().__init__()
@@ -262,7 +260,6 @@ class WorkerThread(QThread):
         self.OS_path: str = main.OS_path
         self.is_kill = 0
         self.stop_event = multiprocessing.Manager().Event()
-
 
     def modify_script1(self, Output_dir: Path, gm_name: str, dt: str | float,
                    NPTS: int | float, duration: float | str,
@@ -359,7 +356,6 @@ class WorkerThread(QThread):
         with open(self.main.dir_temp / f'temp_running_{self.main.model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
-
     @staticmethod
     def modify_script(
         dir_model: Path, model_name: Path, maxRunTime: float, running_case: str,
@@ -453,7 +449,6 @@ class WorkerThread(QThread):
         with open(dir_temp / f'temp_running_{model_name}_{gm_name}.tcl', 'w') as f:
             f.write(text)
 
-
     @staticmethod
     def find_pattern(pattern: re.Pattern, text: str):
         """
@@ -471,14 +466,14 @@ class WorkerThread(QThread):
         if self.mainWin.running_case == 'TH' and not self.main.parallel:
             self.run_th()
         elif self.mainWin.running_case == 'TH' and self.main.parallel:
-            self.run_th_parallel(self.main.parallel)
+            self.run_th_parallel(self.main.parallel, self.main.p_cores)
         elif self.mainWin.running_case == 'IDA' and not self.main.parallel:
             self.run_IDA()
         elif self.mainWin.running_case == 'IDA' and self.main.parallel:
             if self.main.script == 'py':
-                self.run_IDA_parallel_py(self.main.parallel)
+                self.run_IDA_parallel_py(self.main.parallel, self.main.p_cores)
             else:
-                self.run_IDA_parallel_tcl(self.main.parallel)
+                self.run_IDA_parallel_tcl(self.main.parallel, self.main.p_cores)
         elif self.mainWin.running_case == 'PO':
             self.run_pushover()
         elif self.mainWin.running_case == 'CP':
@@ -515,7 +510,6 @@ class WorkerThread(QThread):
                 self.signal_set_progressBar.emit((f'已完成地震动数量：{finished_GM}', int(finished_GM / self.main.GM_N * 100)))
                 if finished_GM == self.main.GM_N:
                     break
-
 
     def run_th(self):
         for idx in range(self.main.GM_N):
@@ -624,8 +618,7 @@ class WorkerThread(QThread):
         else:
             self.signal_finished.emit(1)
 
-
-    def run_th_parallel(self, processes: int):
+    def run_th_parallel(self, processes: int, p_cores: list[str] | None):
         self.main.logger.info(f'正在进行多进程时程分析')
         self.signal_set_ui.emit(('', '', '', '', ''))
         queue = multiprocessing.Manager().Queue()  # 子进程向主进程通信
@@ -655,7 +648,7 @@ class WorkerThread(QThread):
             SF = self.main.GM_SF[idx]
             paras = (queue, script, dir_model, dir_gm, dir_subroutines, dir_temp, model_name, gm_name, 
                      mpco, dt, NPTS, duration, fv_duration, maxRunTime, Output_dir, suffix,
-                     SF, method, th_para, OS_path, print_result, collapse_limit)
+                     SF, method, th_para, OS_path, print_result, collapse_limit, p_cores)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
             results = []
@@ -666,8 +659,6 @@ class WorkerThread(QThread):
             for result in results:
                 output = result.get()
         self.signal_finished.emit(1)
-    
-
 
     def run_IDA(self):
         Sa0, Sa_incr, tol, max_ana = self.mainWin.Sa0, self.mainWin.Sa_incr, self.mainWin.tol, self.mainWin.max_ana
@@ -837,8 +828,7 @@ class WorkerThread(QThread):
         else:
             self.signal_finished.emit(1)
 
-
-    def run_IDA_parallel_py(self, processes: int):
+    def run_IDA_parallel_py(self, processes: int, p_cores: list[str] | None):
         self.main.logger.info(f'正在进行多进程IDA计算')
         self.signal_set_ui.emit(('', '', '', '', ''))
         queue = multiprocessing.Manager().Queue()  # 子进程向主进程通信
@@ -868,7 +858,7 @@ class WorkerThread(QThread):
             paras = (queue, self.stop_event, run_openseespy, gm_name, dt, NPTS, duration, fv_duration, maxRunTime,
                      Output_dir, MainFolder, dir_gm, suffix, T0, T_range, T, RSA,
                      intensity_measure, Sa0, Sa_incr, tol, max_ana, trace_collapse, print_result,
-                     collapse_limit)
+                     collapse_limit, p_cores)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
             results = []
@@ -880,8 +870,7 @@ class WorkerThread(QThread):
                 output = result.get()
         self.signal_finished.emit(1)
     
-
-    def run_IDA_parallel_tcl(self, processes: int):
+    def run_IDA_parallel_tcl(self, processes: int, p_cores: list[str] | None):
         self.main.logger.info(f'正在进行多进程IDA计算')
         self.signal_set_ui.emit(('', '', '', '', ''))
         queue = multiprocessing.Manager().Queue()  # 子进程向主进程通信
@@ -916,7 +905,7 @@ class WorkerThread(QThread):
                      model_name, gm_name, mpco, dt, NPTS, duration, fv_duration, maxRunTime,
                      Output_dir, suffix, T0, T_range, T, RSA, intensity_measure,
                      Sa0, Sa_incr, tol, max_ana, trace_collapse, OS_path, print_result,
-                     collapse_limit)
+                     collapse_limit, p_cores)
             ls_paras.append(paras)
         with multiprocessing.Pool(processes) as pool:
             for i in range(self.main.GM_N):
@@ -1121,6 +1110,7 @@ def run_single_IDA_py(
     trace_collapse: bool,
     print_result: bool,
     collapse_limit: float,
+    p_cores: list[int] | None
 ):
     """
     计算单条地震动的IDA分析(基于openseespy)，
@@ -1141,6 +1131,11 @@ def run_single_IDA_py(
         message = ('a', f'{now()} {gm_name}开始\n')
         if not stop_event.is_set():
             queue.put(message)
+        p = psutil.Process(os.getpid())
+        try:
+            p.cpu_affinity(p_cores)
+        except AttributeError:
+            pass
         Sa_current = Sa0
         if intensity_measure == 1:
             Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
@@ -1274,6 +1269,7 @@ def run_single_IDA_tcl(
     OS_path: str,
     print_result: bool,
     collapse_limit: float,
+    p_cores: list[int] | None
 ):
     """
     计算单条地震动的IDA分析(基于tcl)，
@@ -1294,6 +1290,11 @@ def run_single_IDA_tcl(
         message = ('a', f'{now()} {gm_name}开始\n')
         if not stop_event.is_set():
             queue.put(message)
+        p = psutil.Process(os.getpid())
+        try:
+            p.cpu_affinity(p_cores)
+        except AttributeError:
+            pass
         Sa_current = Sa0
         if intensity_measure == 1:
             Sa_original = Sa(T, RSA, T0)  # 以Sa(T)作为地震动强度指标
@@ -1424,6 +1425,7 @@ def run_single_th(
     OS_path: str,
     print_result: bool,
     collapse_limit: float,
+    p_cores: list[int] | None
 ):
     """
     计算单条地震动的IDA分析(基于tcl)，
@@ -1443,6 +1445,11 @@ def run_single_th(
         now = lambda: datetime.datetime.now().strftime('%H:%M')
         message = ('a', f'{now()} {gm_name}开始\n')
         queue.put(message)
+        p = psutil.Process(os.getpid())
+        try:
+            p.cpu_affinity(p_cores)
+        except AttributeError:
+            pass
         time_gm_start = time.time()
         maxRoofDrift = 0.1
         display = False

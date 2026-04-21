@@ -49,8 +49,14 @@ class Model:
     dir_terminal = cwd / 'OS_terminal'
     dir_subroutines = cwd / 'subroutines'
 
-    def __init__(self, model_name: str, Nstory: int, Nbay: int, script: Literal['tcl', 'py']='tcl', notes=''):
-        """实例化分析模型
+    def __init__(self,
+        model_name: str,
+        Nstory: int,
+        Nbay: int,
+        script: Literal['tcl', 'py']='tcl',
+        notes=''
+    ):
+        """实例化分析模型类
 
         Args:
             model_name (str): 模型名称，应与tcl模型的文件名一致
@@ -182,15 +188,15 @@ class Model:
 
 
     def scale_ground_motions(self,
-            method: str,
-            para: None | float | tuple | str,
-            path_spec_code: str | None=None,
-            SF_code: float=1.0,
-            save_SF=False,
-            plot=True,
-            save_unscaled_spec=False,
-            save_scaled_spec=False
-        ):
+        method: str,
+        para: None | float | tuple | str,
+        path_spec_code: str | None=None,
+        SF_code: float=1.0,
+        save_SF=False,
+        plot=True,
+        save_unscaled_spec=False,
+        save_scaled_spec=False
+    ):
         """缩放地震动，仅运行时程分析前需要调用，
         如果运行IDA或者Pushover，可以不调用。  
 
@@ -432,9 +438,9 @@ class Model:
 
     # TODO: 后处理暂不支持从pkl读取地震动
     def records_from_pickle(self,
-            pkl_file: Path | str,
-            scale: Literal['scaled', 'unscaled', 'normalised']='scaled'
-        ) -> None:
+        pkl_file: Path | str,
+        scale: Literal['scaled', 'unscaled', 'normalised']='scaled'
+    ) -> None:
         """从pickle导入并缩放地震动，其中pickle文件从GroungMotons项目获得
 
         Args:
@@ -490,11 +496,17 @@ class Model:
             return True
 
 
-    def set_running_parameters(
-            self, Output_dir: str | Path=None, OS_terminal: str='OpenSees351',
-            fv_duration=0.0, display=True, mpco=False, log_name='日志',
-            maxRunTime: float=600, auto_quit: bool=False,
-            folder_exists: Literal['ask', 'overwrite', 'delete']='ask'):
+    def set_running_parameters(self,
+        Output_dir: str | Path=None,
+        OS_terminal: str='OpenSees351',
+        fv_duration=0.0,
+        display=True,
+        mpco=False,
+        log_name='日志',
+        maxRunTime: float=600,
+        auto_quit: bool=False,
+        folder_exists: Literal['ask', 'overwrite', 'delete']='ask'
+    ):
         """设置运行参数
 
         Args:
@@ -541,13 +553,19 @@ class Model:
         self.fv_duration = fv_duration
         
 
-    def run_time_history(self, print_result=False, collapse_limit: float=0.1, parallel: int=0):
+    def run_time_history(self,
+        print_result=False,
+        collapse_limit: float=0.1,
+        parallel: int=0,
+        p_cores: list[int]=None
+    ):
         """运行时程分析
 
         Args:
             print_result (bool, optional): 是否打印OpenSees输出的信息，默认为False
             collapse_limit (float, optional): 倒塌判定极限位移角，默认0.1
             parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，为其他数时则代表最大进程数
+            p_cores (list[int], optional): 设置CPU亲和性，将子进程绑定到特定序号的CPU核心上
         """
         if self.do_not_run:
             return
@@ -558,6 +576,7 @@ class Model:
             self.logger.error('参数parallel格式错误，必须为大于等于0的整数')
             raise ValueError('parallel格式错误')
         self.parallel = parallel
+        self.p_cores = p_cores
         self.collapse_limit = collapse_limit
         if self.display and parallel > 0:
             self.logger.warning('采用多进程并行计算时，暂不支持显示实时动画')
@@ -568,10 +587,21 @@ class Model:
         self._exec_win(running_case='TH', IDA_para=None, print_result=print_result)
 
 
-    def run_IDA(
-            self, T0: float, Sa0: float, Sa_incr: float, tol: float, collapse_limit: float=0.1,
-            max_ana=30, test=False, intensity_measure: Literal[1, 2]=1, T_range: tuple=None,
-             print_result=False, trace_collapse: bool=True, parallel: int=0):
+    def run_IDA(self,
+        T0: float,
+        Sa0: float,
+        Sa_incr: float,
+        tol: float,
+        collapse_limit: float=0.1,
+        max_ana=30,
+        test=False,
+        intensity_measure: Literal[1, 2]=1,
+        T_range: tuple=None,
+        print_result=False,
+        trace_collapse: bool=True,
+        parallel: int=0,
+        p_cores: list[int]=None,
+    ):
         """IDA分析
 
         Args:
@@ -589,6 +619,7 @@ class Model:
             print_result (bool, optional): 是否打印opensees终端输出的结果，默认不打印  
             trace_collapse (bool, optional): 是否追踪倒塌，默认True（若False则不动态调整地震动强度以搜寻倒塌点）  
             parallel (int, optional): 多进程并行计算，默认为0，代表不开启并行，为其他数时则代表最大进程数
+            p_cores (list[int], optional): 设置CPU亲和性，将子进程绑定到特定序号的CPU核心上
         """
         if self.do_not_run:
             return
@@ -599,6 +630,7 @@ class Model:
             self.logger.error('参数parallel格式错误，必须为大于等于0的整数')
             raise ValueError('parallel格式错误')
         self.parallel = parallel
+        self.p_cores = p_cores
         if self.display and parallel > 0:
             self.logger.warning('采用多进程并行计算时，暂不支持显示实时动画')
             self.display = False
