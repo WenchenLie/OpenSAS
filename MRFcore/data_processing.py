@@ -1,39 +1,31 @@
 import os
-import sys
 import json
 import shutil
-import time
+import concurrent.futures
 from pathlib import Path
-from math import pi
+from typing import Callable
 
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import originpro as op
 from originpro import WSheet
-from loguru import logger
 from scipy.interpolate import interp1d
 from matplotlib.axes import Axes
-from matplotlib.figure import Figure
+from scipy.integrate import cumulative_trapezoid
 
-from MRFcore.write_origin import WriteOrigin
-
-
-logger.remove()
-logger.add(
-    sink=sys.stdout,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
-    level="DEBUG"
-)
+from .write_origin import WriteOrigin
+from ._logger import logger
 
 
 class DataProcessing:
     g = 9810
+    max_workers = 50
     
     def __init__(self,
-            root: str | Path,
-            max_mode: int=None,
-            attached_opju: str | Path=None):
+        root: str | Path,
+        max_mode: int=None,
+        attached_opju: str | Path=None):
         """基于计算后的结果文件夹提取计算结果
 
         Args:
@@ -41,7 +33,6 @@ class DataProcessing:
             max_mode (int, optional): 读取的最大模态数，默认None
             attached_opju (str | Path, optional): origin文件路径，若给定则数据将写入到改文件，若不指定则将创建一个
         """
-
         self.skip = False
         self.max_mode = max_mode
         self.root = Path(root)
@@ -175,11 +166,11 @@ class DataProcessing:
             elif result == 'PFV':
                 self._read_PFV(print_result)
             elif result == 'beamHinge':
-                self._read_beanHinge(print_result)
+                self._read_beam_hinges(print_result)
             elif result == 'columnHinge':
-                self._read_colHinge(print_result)
+                self._read_col_hinges(print_result)
             elif result == 'panelZone':
-                self._read_panelZone(print_result)
+                self._read_panel_zone(print_result)
             elif result == 'CIDR':
                 self._read_CIDR(print_result)
         logger.success('已读取所有数据')
@@ -209,6 +200,18 @@ class DataProcessing:
         y_new = linear_interp(t_new)
         return y_new
 
+    def _multithreaded_reading(self, func: Callable, print_result: bool):
+        max_workers = min(self.max_workers, self.GM_N)
+        with concurrent.futures.ThreadPoolExecutor(max_workers) as executor:
+            futures = [executor.submit(func, gm) for gm in self.GM_names]
+            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+                try:
+                    completed_gm = future.result()
+                    if print_result:
+                        print(f'    已完成 {completed_gm} ({i+1}/{self.GM_N})     \r', end='', flush=True)
+                except Exception as e:
+                    logger.error(f'读取 {self.GM_names[i]} 时发生错误: {e}')
+                    raise e
 
     def _read_mode(self, print_result: bool):
         """读取模态结果"""
@@ -236,200 +239,169 @@ class DataProcessing:
             print('周期：', T, sep='')
         logger.success('完成     ')
 
+    def _read_other_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            if not Path.exists(folder):
+                break
+            data = np.loadtxt(folder / f'isCollapsed.dat')
+            self._mkdir(self.root_out/subfolder)
+            np.savetxt(self.root_out/subfolder/'倒塌判断.out', np.array([data]), fmt='%d')
+            t = np.loadtxt(folder/'Time.out')[11:, 0]
+            t = np.round(t, 6)
+            np.savetxt(self.root_out/subfolder/'时间序列.out', t, fmt='%f')
+            if self.running_case == 'IDA':
+                data = np.loadtxt(folder / f'Sa.dat')
+                data = np.round(data, 6)
+                np.savetxt(self.root_out/subfolder/'Sa.out', np.array([data]))
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
 
     def _read_other(self, print_result: bool):
         """读取倒塌状态、时间序列"""
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}其他项...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                if not Path.exists(folder):
-                    break
-                data = np.loadtxt(folder / f'isCollapsed.dat')
-                self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'倒塌判断.out', np.array([data]), fmt='%d')
-                t = np.loadtxt(folder/'Time.out')[11:, 0]
-                t = np.round(t, 6)
-                np.savetxt(self.root_out/subfolder/'时间序列.out', t, fmt='%f')
-                if self.running_case == 'IDA':
-                    data = np.loadtxt(folder / f'Sa.dat')
-                    data = np.round(data, 6)
-                    np.savetxt(self.root_out/subfolder/'Sa.out', np.array([data]))
-                num += 1
-                if self.running_case == 'TH':
-                    break
-        
+        logger.info('正在读取倒塌状态、时间序列...')
+        self._multithreaded_reading(self._read_other_worker, print_result)
+        logger.success('完成     ')
+
+    def _read_IDR_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            IDR = np.zeros(self.Nstory + 1)
+            IDR_res = np.zeros(self.Nstory + 1)
+            if not Path.exists(folder):
+                break
+            IDR_roof = np.array([max(abs(np.loadtxt(folder / f'SDR_Roof.out')))])  # 屋顶位移角
+            for story in range(1, self.Nstory + 1):
+                # 遍历楼层
+                data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]  # 层间位移角
+                data_max= max(abs(data))
+                data_res = data[-1]
+                IDR[story] = data_max
+                IDR_res[story] = data_res
+            self._mkdir(self.root_out/subfolder)
+            np.savetxt(self.root_out/subfolder/'层间位移角.out', IDR)
+            np.savetxt(self.root_out/subfolder/'残余层间位移角.out', IDR_res)
+            np.savetxt(self.root_out/subfolder/'屋顶层间位移角.out', IDR_roof)
+            np.savetxt(self.root_out/subfolder/'DCF.out', max(IDR) / IDR_roof)  # 层间变形集中系数
+            roof_d = pd.read_csv(folder/f'Disp{self.Nstory+1}.out', header=None).to_numpy()[11:, 0]
+            np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d, fmt='%.4f')
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
+
     def _read_IDR(self, print_result: bool):
         """读取最大层间位移角，残余层间位移角"""
         logger.info('正在读取层间位移角...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}层间位移角...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                IDR = np.zeros(self.Nstory + 1)
-                IDR_res = np.zeros(self.Nstory + 1)
-                if not Path.exists(folder):
-                    break
-                IDR_roof = np.array([max(abs(np.loadtxt(folder / f'SDR_Roof.out')))])  # 屋顶位移角
-                for story in range(1, self.Nstory + 1):
-                    # 遍历楼层
-                    data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]  # 层间位移角
-                    data_max= max(abs(data))
-                    data_res = data[-1]
-                    IDR[story] = data_max
-                    IDR_res[story] = data_res
-                self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'层间位移角.out', IDR)
-                np.savetxt(self.root_out/subfolder/'残余层间位移角.out', IDR_res)
-                np.savetxt(self.root_out/subfolder/'屋顶层间位移角.out', IDR_roof)
-                np.savetxt(self.root_out/subfolder/'DCF.out', max(IDR) / IDR_roof)  # 层间变形集中系数
-                roof_d = pd.read_csv(folder/f'Disp{self.Nstory+1}.out', header=None).to_numpy()[11:, 0]
-                np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d, fmt='%.4f')
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_IDR_worker, print_result)
         logger.success('完成     ')
 
-    @staticmethod
-    def _get_cumulative_results(list_: list | np.ndarray) -> float:
-        """获取可迭代对象的累积增量值
-
-        Args:
-            list_ (list | np.ndaray): 列表数据
-
-        Returns:
-            float: 累积增量值
-        """
-        result = 0
-        for i in range(1, len(list_)):
-            result += abs(list_[i] - list_[i-1])
-        return result
-        
+    def _read_CIDR_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            CIDR = np.zeros(self.Nstory + 1)
+            if not Path.exists(folder):
+                break
+            for story in range(1, self.Nstory + 1):
+                data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]
+                data_c = float(np.sum(np.abs(np.diff(data))))
+                CIDR[story] = data_c
+            self._mkdir(self.root_out/subfolder)
+            np.savetxt(self.root_out/subfolder/'累积层间位移角.out', CIDR)
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
 
     def _read_CIDR(self, print_result: bool):
         """读取累积层间位移角"""
         logger.info('正在计算累积层间位移角...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在计算{gm_name}累积层间位移角...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                CIDR = np.zeros(self.Nstory + 1)
-                if not Path.exists(folder):
-                    break
-                for story in range(1, self.Nstory + 1):
-                    # 遍历楼层
-                    data = pd.read_csv(folder / f'SDR{story}.out', header=None).to_numpy()[:, 0]
-                    data_c= self._get_cumulative_results(data)
-                    CIDR[story] = data_c
-                self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'累积层间位移角.out', CIDR)
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_CIDR_worker, print_result)
         logger.success('完成     ')
-        
+
+    def _read_shear_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            shear = np.zeros(self.Nstory)
+            if not Path.exists(folder):
+                break
+            all_files = list(folder.iterdir())
+            for story in range(1, self.Nstory + 1):
+                shear_story = None
+                for file in all_files:
+                    if f'Shear{story}_' in file.name:
+                        data = np.loadtxt(file)[:, 0] / 1000
+                        if shear_story is not None:
+                            shear_story += data
+                        else:
+                            shear_story = data
+                shear_story = np.max(np.abs(shear_story))
+                shear[story - 1] = shear_story
+            self._mkdir(self.root_out/subfolder)
+            np.savetxt(self.root_out/subfolder/'楼层剪力(kN).out', shear)
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
+
     def _read_shear(self, print_result: bool):
         """读取层剪力、底部剪力时程"""
         logger.info('正在计算楼层剪力...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在计算{gm_name}层剪力...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                shear = np.zeros(self.Nstory)
-                if not Path.exists(folder):
-                    break
-                for story in range(1, self.Nstory + 1):
-                    # 遍历楼层
-                    shear_story = None
-                    for file in folder.iterdir():
-                        if f'Shear{story}_' in file.name:
-                            data = np.loadtxt(file)[:, 0] / 1000
-                            if shear_story is not None:
-                                shear_story += data
-                            else:
-                                shear_story = data
-                    shear_story = max(abs(shear_story))
-                    shear[story - 1] = shear_story
-                self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'楼层剪力(kN).out', shear)
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_shear_worker, print_result)
         logger.success('完成     ')
 
     @staticmethod
     def _get_gm(path_: str | Path, gm_name, suffix='.txt') -> tuple[np.ndarray, float]:
-        path_ = Path(path_)
-        with open(path_/'GM_info.json', 'r') as f:
-            dt_dict = json.loads(f.read())
+        dt_dict = json.loads(open(Path(path_)/'GM_info.json', 'r').read())
         dt = dt_dict[gm_name]
         th = np.loadtxt(f'{path_}/{gm_name}{suffix}')
-        # t = np.arange(0, len(th) * dt, dt)
         t = np.linspace(0, (len(th) - 1) * dt, len(th))
         return th, t
+
+    def _read_PFA_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            if not Path.exists(folder):
+                break
+            a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
+            PFA = np.zeros(self.Nstory)
+            t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
+            for story in range(1, self.Nstory + 1):
+                data = np.loadtxt(folder / f'RFA{story+1}.out')[10:]  # 楼层相对加速度
+                data += a_base  # 转换为绝对加速度
+                data_max= np.max(np.abs(data)) / self.g
+                PFA[story - 1] = data_max
+            self._mkdir(self.root_out/subfolder)
+            np.savetxt(self.root_out/subfolder/'层加速度(g).out', PFA)
+            a_roof = np.loadtxt(folder/f'RFA{self.Nstory+1}.out')[10:] / self.g  # 屋顶相对加速度
+            a_roof += a_base  # 屋顶绝对加速度
+            np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', a_roof)
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
 
     def _read_PFA(self, print_result: bool):
         """读取楼层绝对加速度包络，屋顶加速度时程"""
         logger.info('正在读取楼层绝对加速度...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}楼层加速度...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                if not Path.exists(folder):
-                    break
-                a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
-                PFA = np.zeros(self.Nstory)
-                t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
-                for story in range(1, self.Nstory + 1):
-                    # 遍历楼层
-                    data = np.loadtxt(folder / f'RFA{story+1}.out')[10:]  # 楼层相对加速度
-                    try:
-                        data += a_base  # 转换为绝对加速度
-                    except Exception as e:
-                        print('【ERROR】')
-                        print(folder / 'groundmotion.out')
-                        print(folder / f'RFA{story+1}.out')
-                        # raise e
-                    data_max= max(abs(data)) / self.g
-                    PFA[story - 1] = data_max
-                self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'层加速度(g).out', PFA)
-                a_roof = np.loadtxt(folder/f'RFA{self.Nstory+1}.out')[10:] / self.g  # 屋顶相对加速度
-                try:
-                    a_roof += a_base  # 屋顶绝对加速度
-                except:
-                    print('【ERROR】')
-                    print(folder / 'groundmotion.out')
-                    print(folder / f'RFA{self.Nstory+1}.out')
-                np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', a_roof)
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_PFA_worker, print_result)
         logger.success('完成     ')
 
     @staticmethod
@@ -444,46 +416,75 @@ class DataProcessing:
             np.ndarray: 速度序列
         """
         if len(t) != len(a):
-            raise ValueError(f'【Error】加速度时程和时间序列长度不一致！（{len(a)}, {len(t)}）')
-        v = np.array([0])
-        for i in range(len(a) - 1):
-            dt = t[i + 1] - t[i]
-            S = (a[i] + a[i+1]) * dt / 2
-            v_new = v[-1] + S
-            v = np.append(v, v_new)
-        return v
+            raise ValueError(f'【Error】长度不一致！（{len(a)}, {len(t)}）')
+        return cumulative_trapezoid(a, t, initial=0)
 
+    def _read_PFV_worker(self, gm_name: str):
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            PFV = np.zeros(self.Nstory)
+            if not Path.exists(folder):
+                break
+            for story in range(1, self.Nstory + 1):
+                # 遍历楼层
+                data = np.loadtxt(folder / f'RFV{story+1}.out')
+                data_max = np.max(np.abs(data))
+                PFV[story - 1] = data_max
+            self._mkdir(self.root_out/subfolder)
+            np.savetxt(self.root_out/subfolder/'层速度.out', PFV)
+            v_roof = np.loadtxt(folder/f'RFV{self.Nstory+1}.out')[11:]
+            np.savetxt(self.root_out/subfolder/'屋顶速度时程(绝对).out', v_roof)
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
 
     def _read_PFV(self, print_result: bool):
-        """读取楼层相对速度"""
-        logger.info('正在读取楼层相对速度...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}楼层速度...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                PFV = np.zeros(self.Nstory)
-                if not Path.exists(folder):
-                    break
-                for story in range(1, self.Nstory + 1):
-                    # 遍历楼层
-                    data = np.loadtxt(folder / f'RFV{story+1}.out')
-                    data_max = max(abs(data))
-                    PFV[story - 1] = data_max
-                self._mkdir(self.root_out/subfolder)
-                np.savetxt(self.root_out/subfolder/'层速度.out', PFV)
-                v_roof = np.loadtxt(folder/f'RFV{self.Nstory+1}.out')[11:]
-                np.savetxt(self.root_out/subfolder/'屋顶速度时程(相对).out', v_roof)
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        """读取楼层绝对速度"""
+        logger.info('正在读取楼层绝对速度...')
+        self._multithreaded_reading(self._read_PFV_worker, print_result)
         logger.success('完成     ')
 
-    def _read_beanHinge(self, print_result: bool):
+    def _read_beam_hinges_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            if not Path.exists(folder):
+                break
+            hinge_result = np.zeros((self.Nstory, self.Nbay * 2))
+            for story in range(1, self.Nstory + 1):
+                # 遍历楼层
+                for col in range(1, self.Nbay + 2):
+                    # 遍历柱 1 ~ 柱数
+                    if col == 1:
+                        # 左边柱
+                        theta_r = np.loadtxt(folder/f'BeamSpring{story+1}_{col}R.out')[:, 1]
+                        theta_r = np.max(np.abs(theta_r))
+                        hinge_result[story-1, 0] = theta_r
+                    elif col == self.Nbay + 1:
+                        # 右边柱
+                        theta_l = np.loadtxt(folder/f'BeamSpring{story+1}_{col}L.out')[:, 1]
+                        theta_l = np.max(np.abs(theta_l))
+                        hinge_result[story-1, -1] = theta_l
+                    else:
+                        # 中间的柱
+                        theta_l = np.loadtxt(folder/f'BeamSpring{story+1}_{col}L.out')[:, 1]
+                        theta_r = np.loadtxt(folder/f'BeamSpring{story+1}_{col}R.out')[:, 1]
+                        theta_l, theta_r = np.max(np.abs(theta_l)), np.max(np.abs(theta_r))
+                        hinge_result[story-1, 1+(col-2)*2] = theta_l
+                        hinge_result[story-1, 2+(col-2)*2] = theta_r
+            np.savetxt(self.root_out/subfolder/'梁铰变形.out', hinge_result, fmt='%.6f')
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
+
+    def _read_beam_hinges(self, print_result: bool):
         """读取梁铰  
         行数=楼层数，列数=柱子数，
         每一行中，从左到右依次为：
@@ -491,121 +492,85 @@ class DataProcessing:
         即梁铰顺序是从左到右的
         """
         logger.info('正在读取梁铰变形...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}梁铰变形...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                if not Path.exists(folder):
-                    break
-                hinge_result = np.zeros((self.Nstory, self.Nbay * 2))
-                for story in range(1, self.Nstory + 1):
-                    # 遍历楼层
-                    for col in range(1, self.Nbay + 2):
-                        # 遍历柱 1 ~ 柱数
-                        if col == 1:
-                            # 左边柱
-                            theta_r = np.loadtxt(folder/f'BeamSpring{story+1}_{col}R.out')[:, 1]
-                            theta_r = max(abs(theta_r))
-                            hinge_result[story-1, 0] = theta_r
-                        elif col == self.Nbay + 1:
-                            # 右边柱
-                            theta_l = np.loadtxt(folder/f'BeamSpring{story+1}_{col}L.out')[:, 1]
-                            theta_l = max(abs(theta_l))
-                            hinge_result[story-1, -1] = theta_l
-                        else:
-                            # 中间的柱
-                            theta_l = np.loadtxt(folder/f'BeamSpring{story+1}_{col}L.out')[:, 1]
-                            theta_r = np.loadtxt(folder/f'BeamSpring{story+1}_{col}R.out')[:, 1]
-                            theta_l, theta_r = max(abs(theta_l)), max(abs(theta_r))
-                            hinge_result[story-1, 1+(col-2)*2] = theta_l
-                            hinge_result[story-1, 2+(col-2)*2] = theta_r
-                np.savetxt(self.root_out/subfolder/'梁铰变形.out', hinge_result, fmt='%.6f')
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_beam_hinges_worker, print_result)
         logger.success('完成     ')
 
-    def _read_colHinge(self, print_result: bool):
+    def _read_col_hinges_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            if not Path.exists(folder):
+                break
+            hinge_result = np.zeros((self.Nstory * 2, self.Nbay + 1))
+            for story in range(1, self.Nstory + 2):
+                # 遍历楼层 1-5
+                for col in range(1, self.Nbay + 2):
+                    # 遍历柱 1-4
+                    # M_l = np.loadtxt(folder/f'BeamSpring{story+1}{span}L_F.out')
+                    # M_r = np.loadtxt(folder/f'BeamSpring{story+1}{span}R_F.out')
+                    if story == 1:
+                        # 首层（地面）
+                        theta_T = np.loadtxt(folder/f'ColSpring{story}_{col}T.out')[:, 1]
+                        theta_T = np.max(np.abs(theta_T))
+                        hinge_result[0, col-1] = theta_T
+                    elif story == self.Nstory + 1:
+                        # 顶层
+                        theta_B = np.loadtxt(folder/f'ColSpring{story}_{col}B.out')[:, 1]
+                        theta_B = np.max(np.abs(theta_B))
+                        hinge_result[-1, col-1] = theta_B
+                    else:
+                        # 中间层
+                        theta_B = np.loadtxt(folder/f'ColSpring{story}_{col}B.out')[:, 1]
+                        theta_T = np.loadtxt(folder/f'ColSpring{story}_{col}T.out')[:, 1]
+                        theta_B, theta_T = np.max(np.abs(theta_B)), np.max(np.abs(theta_T))
+                        hinge_result[2*(story-2)+1, col-1] = theta_B
+                        hinge_result[2*(story-2)+2, col-1] = theta_T
+            np.savetxt(self.root_out/subfolder/'柱铰变形.out', hinge_result, fmt='%.6f')
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
+
+    def _read_col_hinges(self, print_result: bool):
         """
         读取柱铰  
         行数=层数*2，列数=柱子数，每一列中，随行数增大柱铰的实际位置顺序从下到上        
         """
         # 
         logger.info('正在读取柱铰变形...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}柱铰变形...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                if not Path.exists(folder):
-                    break
-                hinge_result = np.zeros((self.Nstory * 2, self.Nbay + 1))
-                for story in range(1, self.Nstory + 2):
-                    # 遍历楼层 1-5
-                    for col in range(1, self.Nbay + 2):
-                        # 遍历柱 1-4
-                        # M_l = np.loadtxt(folder/f'BeamSpring{story+1}{span}L_F.out')
-                        # M_r = np.loadtxt(folder/f'BeamSpring{story+1}{span}R_F.out')
-                        if story == 1:
-                            # 首层（地面）
-                            theta_T = np.loadtxt(folder/f'ColSpring{story}_{col}T.out')[:, 1]
-                            theta_T = max(abs(theta_T))
-                            hinge_result[0, col-1] = theta_T
-                        elif story == self.Nstory + 1:
-                            # 顶层
-                            theta_B = np.loadtxt(folder/f'ColSpring{story}_{col}B.out')[:, 1]
-                            theta_B = max(abs(theta_B))
-                            hinge_result[-1, col-1] = theta_B
-                        else:
-                            # 中间层
-                            theta_B = np.loadtxt(folder/f'ColSpring{story}_{col}B.out')[:, 1]
-                            theta_T = np.loadtxt(folder/f'ColSpring{story}_{col}T.out')[:, 1]
-                            theta_B, theta_T = max(abs(theta_B)), max(abs(theta_T))
-                            hinge_result[2*(story-2)+1, col-1] = theta_B
-                            hinge_result[2*(story-2)+2, col-1] = theta_T
-                np.savetxt(self.root_out/subfolder/'柱铰变形.out', hinge_result, fmt='%.6f')
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_col_hinges_worker, print_result)
         logger.success('完成     ')
 
-    def _read_panelZone(self, print_result: bool):
+    def _read_panel_zone_worker(self, gm_name: str) -> str:
+        num =  1
+        while True:
+            # 遍历每个动力增量
+            subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
+            folder = self.root / subfolder
+            if not Path.exists(folder):
+                break
+            hinge_result = np.zeros((self.Nstory, self.Nbay + 1))
+            for story in range(2, self.Nstory + 2):
+                # 遍历楼层 2-5
+                for col in range(1, self.Nbay + 2):
+                    theta = np.loadtxt(folder/f'PZ{story}_{col}.out')[:, 1]
+                    theta = max(abs(theta))
+                    hinge_result[story-2, col-1] = theta
+            np.savetxt(self.root_out/subfolder/'节点域变形.out', hinge_result, fmt='%.6f')
+            num += 1
+            if self.running_case == 'TH':
+                break
+        return gm_name
+
+    def _read_panel_zone(self, print_result: bool):
         """
         读取节点域  
         行数=层数，列数=柱子数，每一列中，随行数增大节点的实际位置顺序从下到上        
         """
         logger.info('正在读取节点域变形...')
-        for idx_gm in range(self.GM_N):
-            # 遍历地震动
-            gm_name = self.GM_names[idx_gm]
-            num =  1
-            print(f'    正在读取{gm_name}节点域变形...({idx_gm+1}/{self.GM_N})     \r', end='')
-            while True:
-                # 遍历每个动力增量
-                subfolder = f'{gm_name}_{num}' if self.running_case == 'IDA' else gm_name
-                folder = self.root / subfolder
-                if not Path.exists(folder):
-                    break
-                hinge_result = np.zeros((self.Nstory, self.Nbay + 1))
-                for story in range(2, self.Nstory + 2):
-                    # 遍历楼层 2-5
-                    for col in range(1, self.Nbay + 2):
-                        theta = np.loadtxt(folder/f'PZ{story}_{col}.out')[:, 1]
-                        theta = max(abs(theta))
-                        hinge_result[story-2, col-1] = theta
-                np.savetxt(self.root_out/subfolder/'节点域变形.out', hinge_result, fmt='%.6f')
-                num += 1
-                if self.running_case == 'TH':
-                    break
+        self._multithreaded_reading(self._read_panel_zone_worker, print_result)
         logger.success('完成     ')
 
     @staticmethod
@@ -1088,30 +1053,3 @@ class DataProcessing:
                     ws.set_labels([unit] * 5, 'U', offset=len(data.columns) + 1)  # 统计特征Y列单位
                     ws.set_labels(['Mean', 'STD', '16%', '50%', '84%'], 'C', offset=len(data.columns) + 1)  # 统计特征Y列注释
                     ws.set_labels([y_lname] * (ws.cols - 1), 'L', offset=1)  # 所有Y列长名称
-
-
-if __name__ == "__main__":
-    
-    time0 = time.time()
-    model = DataProcessing(r'H:\RockingFrameWithRSRD\MRF4S_AS_RD', gm_suffix='.th')
-    model.set_output_dir(r'H:\RockingFrameWithRSRD\MRF4S_AS_RD_out', cover=1)
-    model.read_results('mode', 'IDR')
-    model.read_results('CIDR', 'PFA', 'PFV', 'shear', 'panelZone', 'beamHinge', 'columnHinge', print_result=True)
-    # l1 = pow(6100**2 + 4300**2, 0.5)  # 首层斜撑长度
-    # l2 = pow(6100**2 + 4000**2, 0.5)  # 其他层斜撑长度
-    # model.read_pushover(H=16300, plot_result=True)
-    # model.read_th()  # 只有时程分析工况需要用
-    time1 = time.time()
-    print('耗时', time1 - time0)
-
-
-
-
-"""
-weight:
-    4层框架 - 
-
-注：
-带th的是时程分析结果，带pushover的是pushover分析结果，其他是IDA分析结果
-时程分析和pushover分析只进行一次处理
-"""
