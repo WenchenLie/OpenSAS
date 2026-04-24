@@ -25,14 +25,7 @@ from seismicutils import Records
 
 from .Win import MyWin
 from .spectrum import spectrum
-
-
-logger.remove()
-logger.add(
-    sink=sys.stdout,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
-    level="DEBUG"
-)
+from ._logger import logger
 
 
 class Model:

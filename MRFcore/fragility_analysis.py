@@ -17,14 +17,8 @@ from loguru import logger
 from .get_SSF import get_SFF
 from .get_acceptable_ACMR import get_acceptable_ACMR
 from ._utils import Point, Curve, AutoDict
+from ._logger import logger
 
-
-logger.remove()
-logger.add(
-    sink=sys.stdout,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> <red>|</red> <level>{level}</level> <red>|</red> <level>{message}</level>",
-    level="DEBUG"
-)
 
 def get_x(x: list, y: list, y0: float) -> float:
     """获得横线y=y0与给定曲线的交点横坐标
