@@ -41,7 +41,7 @@ def TimeHistorySolver(
     algorithms = [("KrylovNewton",), ("NewtonLineSearch",), ("Newton",), ("SecantNewton",)]
     algorithm_id = 0
     ops.wipeAnalysis()
-    ops.constraints("Plain")
+    ops.constraints("Transformation")
     ops.numberer("RCM")
     ops.system("UmfPack")
     ops.test("EnergyIncr", 1.0e-3, 100)
@@ -95,7 +95,7 @@ def TimeHistorySolver(
             factor *= 2
             factor = min(factor, max_factor)
             if factor_old < factor:
-                print(f"---- Enlarged factor: {factor}, Time: {ops.getTime()}, record duration: {duration}")
+                print(f"---- Enlarged factor: {factor}, Time: {ops.getTime()}")
             algorithm_id -= 1
             algorithm_id = max(0, algorithm_id)
             # algorithm_id += 1
@@ -109,8 +109,8 @@ def TimeHistorySolver(
                 if algorithm_id == 4:
                     print("Cannot converge")
                     return 2, ops.getTime(), collapse_flag, SDRs, SDR_roof
-                print(f"-------- Switched algorithm:", *algorithms[algorithm_id], f'Time: {ops.getTime()}, record duration: {duration}')
-            print(f"---- Reduced factor: {factor}, Time: {ops.getTime()}, record duration: {duration}")
+                print(f"-------- Switched algorithm:", *algorithms[algorithm_id], f'Time: {ops.getTime()}')
+            print(f"---- Reduced factor: {factor}, Time: {ops.getTime()}")
         dt = dt_init * factor
         if dt + ops.getTime() > duration:
             dt = duration - ops.getTime()
@@ -118,13 +118,13 @@ def TimeHistorySolver(
         nstep += 1
         # if nstep == 20:
         #     break
-
+            
 
 def SDR_tester(story_heights: list, ctrl_nodes: list,
                CollapseDrift: float, MaxAnalysisDrift: float,
                GMname: str) -> tuple[bool, bool, list[float], float]:
     """
-    return (tuple[bool, bool]): Exceeding CollapseDrift? Exceeding MaxAnalysisDrift? 
+    return (tuple[bool, bool, list[float], float]): Exceeding CollapseDrift? Exceeding MaxAnalysisDrift? SDR, and roof SDR 
     """
     if CollapseDrift > MaxAnalysisDrift:
         raise ValueError('`MaxAnalysisDrift` should be larger than `CollapseDrift`')

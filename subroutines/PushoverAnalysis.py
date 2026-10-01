@@ -12,7 +12,7 @@ def PushoverAnalysis(
 
     CtrlNode = CtrlNodes[-1]
     ops.wipeAnalysis()
-    ops.constraints("Plain")
+    ops.constraints("Transformation")
     ops.numberer("RCM")
     ops.system("UmfPack")
     ops.test("EnergyIncr", 1.e-5, 30)

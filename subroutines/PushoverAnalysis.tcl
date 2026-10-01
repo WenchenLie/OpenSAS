@@ -3,7 +3,7 @@
 proc PushoverAnalysis {CtrlNode Dmax Dincr_init maxRunTime {min_factor 1e-6} {max_factor 1}} {
 
     wipeAnalysis
-    constraints Plain
+    constraints Transformation
     numberer RCM
     system UmfPack
     test EnergyIncr 1.e-5 30

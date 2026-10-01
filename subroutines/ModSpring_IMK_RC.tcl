@@ -69,11 +69,11 @@ if {$Units == 1} {
 	set c_unit 6.895;
 }
 
-set d 		[expr $h-$d1];
-set delta1  [expr $d1/$d];
+set d 		[expr double($h)-$d1];
+set delta1  [expr double($d1)/$d];
 set P       [expr $PPc*$b*$d*$fc];
-set n       [expr $Es/$Ec];
-set esy     [expr $fy/$Es];
+set n       [expr double($Es)/$Ec];
+set esy     [expr double($fy)/$Es];
 set ecu     0.003;
 set area_T  [expr $rho_T*$b*$d];
 set area_C  [expr $rho_C*$b*$d];
@@ -82,12 +82,13 @@ set area_C  [expr $rho_C*$b*$d];
 # Compute My as per Panagiotakos and Fardis (2001) 
 ###################################################################
 
-if {$fc < [expr  7.6 / $c_unit]} {
+set fcMPa [expr {$fc*$c_unit}]
+if {$fcMPa <= 27.6} {
     set beta1 0.85;
-} elseif {$fc > [expr 55.17 / $c_unit]} {
+} elseif {$fcMPa >= 55.16} {
     set beta1 0.65;
 } else {
-    set beta1 [expr 1.05-0.05*($fc/$c_unit/6.9)];
+    set beta1 [expr 1.05-0.05*($fcMPa/6.9)];
 }
 
 set c  [expr ($area_T*$fy - $area_C*$fy + $P)/(0.85*$fc*$beta1*$b)];
@@ -97,7 +98,7 @@ if {$c<$cb} {
     set A		[expr $rho_T + $rho_C 		    +     $rho_I + ($P/$b/$d/$fy)];
     set B		[expr $rho_T + $rho_C * $delta1 + 0.5*$rho_I*(1 + $delta1) +($P/$b/$d/$fy)];
     set ky      [expr pow(($n*$n*$A*$A+2*$n*$B),0.5) - $n*$A];
-    set curv_y  [expr $fy/$Es/(1 - $ky)/$d];
+    set curv_y  [expr $esy/(1.0 - $ky)/$d];
 } else {
 	set A		[expr $rho_T + $rho_C+$rho_I - ($P/1.8/$n/$b/$d/$fc)];
 	set B		[expr $rho_T + $rho_C*$delta1 + 0.5*$rho_I*(1 + $delta1)];
@@ -106,8 +107,8 @@ if {$c<$cb} {
 }
 
 
-set term1	[expr $Ec*pow($ky,2)/2*(0.5*(1 + $delta1) - $ky/3)];
-set term2	[expr $Es/2*((1 - $ky)*$rho_T+($ky-$delta1)*$rho_C+$rho_I/6*(1 - $delta1))*(1 - $delta1)];
+set term1	[expr $Ec*pow($ky,2)/2.0*(0.5*(1.0 + $delta1) - $ky/3.0)];
+set term2	[expr $Es/2.0*((1.0 - $ky)*$rho_T+($ky-$delta1)*$rho_C+$rho_I/6.0*(1.0 - $delta1))*(1.0 - $delta1)];
 
 set My		[expr  $b * pow($d,3)*$curv_y*($term1+$term2)];
 set My [expr $sf * $My]
@@ -147,7 +148,7 @@ set McMy     	1.13;  # [1] Eq. (9)
 
 set gamma   	[expr 170.7	* pow(0.270,$PPc) * pow(0.10,$s/$d)];  # [1] Eq. (10)
 set lambda      [expr 30.0 * pow(0.3, $PPc)];  # [1] Eq. (11)
-set LAMBDA      [expr $lambda * $theta_pc];  # Et = Λ*My = γ*θy*My = λ*θcap,pl*My [1]
+set LAMBDA      [expr $lambda * $theta_p];  # Et = Λ*My = γ*θy*My = λ*θcap,pl*My [1]
 
 set n 10.0
 # set I [expr 1.0 / 12 * $b * $h ** 3 * $EIyEIg]
