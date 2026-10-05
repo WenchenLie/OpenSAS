@@ -391,7 +391,7 @@ class DataProcessing:
             self._mkdir(self.root_out/subfolder)
             np.savetxt(self.root_out/subfolder/'层加速度(g).out', PFA)
             a_roof = np.loadtxt(folder/f'RFA{self.Nstory+1}.out')[10:] / self.g  # 屋顶相对加速度
-            a_roof += a_base  # 屋顶绝对加速度
+            a_roof += a_base / self.g  # 屋顶绝对加速度
             np.savetxt(self.root_out/subfolder/'屋顶加速度时程(绝对)(g).out', a_roof)
             num += 1
             if self.running_case == 'TH':
