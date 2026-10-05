@@ -1,9 +1,6 @@
 """
 多层钢框架、混凝土框架OpenSees模型分析类
 作者：Wenchen Lie
-更新：2024.03.10
-更新：2024-04-07，可设置最大运行时间，可选择不追踪倒塌点
-更新：2024-04-12，增加多进程并行计算
 """
 import os
 import sys
@@ -33,7 +30,7 @@ class Model:
     # (1) 代码仅支持Windows系统
     # (2) 导入的地震动、反应谱单位均默认为g
 
-    format_version = '2.5'
+    format_version = '2.6.2'
     cwd = Path().cwd()
     dir_gm = cwd / 'GMs'
     dir_model = cwd / 'models'

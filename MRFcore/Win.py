@@ -25,8 +25,6 @@ from ui.Win_running import Ui_Win_running
 """
 时程分析、增量动力分析、Pushover分析监控窗口
 作者：列文琛
-更新：2024-03-05
-更新：2024-04-07，优化代码
 """
 
 class MyWin(QDialog):
