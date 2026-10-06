@@ -51,7 +51,7 @@ proc ColumnHinge {SpringID NodeI NodeJ E Ix d htw ry L Lb My PPy SF_PPy type_ {c
     if {$PPy < 0.2} {
         set My [expr (1.15/1.1)*$My*(1-$PPy/2)];
     } else {
-        set My [expr (1.15/1.1)*$My*(9/8)*(1-$PPy)];
+        set My [expr (1.15/1.1)*$My*(9.0/8.0)*(1-$PPy)];
     };  # Eq. (2), [1]
 
     set McMy [expr 12.5 * pow(($htw),-0.200) * pow(($Lb/$ry),-0.400) * pow((1-$PPy),0.400)];  # Eq. (3), [1]

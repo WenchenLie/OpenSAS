@@ -71,8 +71,8 @@ proc DisplayPlane {ShapeType dAmp viewPlane {nEigen 0}  {quadrant 0}} {
 	set vMax [expr $vMax + 2*$vSide];	# pad a little more on top, because of window title
 	set uWide [expr $uMax - $uMin+$epsilon];
 	set vWide [expr $vMax - $vMin+$epsilon];
-	set uMid [expr ($uMin+$uMax)/2];
-	set vMid [expr ($vMin+$vMax)/2];
+	set uMid [expr ($uMin+$uMax)/2.0];
+	set vMid [expr ($vMin+$vMax)/2.0];
 
 	# keep the following general, as change the X and Y and Z for each view plane
 	# next three commmands define viewing system, all values in global coords
@@ -117,7 +117,7 @@ proc DisplayPlane {ShapeType dAmp viewPlane {nEigen 0}  {quadrant 0}} {
 	}
 	# next three commands define view, all values in local coord system
 	if  {$viewPlane =="3D" } {
-		viewWindow [expr $uMin-$uWide/4] [expr $uMax/2] [expr $vMin-0.25*$vWide] [expr $vMax] 
+		viewWindow [expr $uMin-$uWide/4.0] [expr $uMax/2.0] [expr $vMin-0.25*$vWide] [expr $vMax] 
 	} else {
 		viewWindow $uMin $uMax $vMin $vMax
 	}

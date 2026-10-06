@@ -122,7 +122,7 @@ proc PanelZone {Floor Axis X Y E mu fy A_stiff I_stiff d_col d_beam tp tf bf tra
     }
 
     # Calculating shear behavior
-    set G [expr $E / (2 * (1 + $mu))];  # shear modulus
+    set G [expr double($E) / (2.0 * (1.0 + $mu))];  # shear modulus
     # 1
     set V1 [expr 0.55 * $fy * $d_col * $tp];  # yield force
     set M1 [expr $V1 * $d_beam];  # yield moment
