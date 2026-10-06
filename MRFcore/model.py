@@ -30,7 +30,7 @@ class Model:
     # (1) 代码仅支持Windows系统
     # (2) 导入的地震动、反应谱单位均默认为g
 
-    format_version = '2.6.2'
+    format_version = '2.6.3'
     cwd = Path().cwd()
     dir_gm = cwd / 'GMs'
     dir_model = cwd / 'models'

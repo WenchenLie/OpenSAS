@@ -166,8 +166,8 @@ lib/
 temp/
 log/
 run[0-9].py
-test.py
-test.tcl
+test*.py
+test*.tcl
 ui/*.ui
 /__pycache__
 其他参数对比/
