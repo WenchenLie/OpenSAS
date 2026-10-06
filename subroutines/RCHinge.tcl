@@ -61,7 +61,7 @@ proc _RCYieldMoment {b h dCompression dTension areaT areaC areaI P fc Ec fy Es c
     return $My
 }
 
-proc RCHinge {SpringID NodeI NodeJ fc Ec fy Es b h dTop dBottom s rhoTop rhoBottom rhoI rhoSH a_sl PPc Units L EIyEIg n Reverse} {
+proc RCHinge {SpringID NodeI NodeJ fc Ec fy Es b h dTop dBottom s rhoTop rhoBottom rhoI rhoSH a_sl PPc Units L EIyEIg n Reverse {check ""}} {
     # Normalize values that are commonly emitted as integer-looking Tcl
     # literals.  This protects all downstream expressions from integer math.
     set fc [expr {double($fc)}]
@@ -110,4 +110,8 @@ proc RCHinge {SpringID NodeI NodeJ fc Ec fy Es b h dTop dBottom s rhoTop rhoBott
     uniaxialMaterial IMKPeakOriented $SpringID $Ke $thetaPPos $theta_pc 0.2 $MyPos 1.13 0.01 $thetaPNeg $theta_pc 0.2 $MyNeg 1.13 0.01 $lambdaIMK $lambdaIMK $lambdaIMK $lambdaIMK 1 1 1 1 1 1
     # puts "$Ke $thetaPPos $theta_pc 0.2 $MyPos 1.13 0.01 $thetaPNeg $theta_pc 0.2 $MyNeg 1.13 0.01 $lambdaIMK $lambdaIMK $lambdaIMK $lambdaIMK 1 1 1 1 1 1"
     element zeroLength $SpringID $NodeI $NodeJ -mat 99 99 $SpringID -dir 1 2 6 -doRayleigh 1
+
+    if {$check ne ""} {
+        puts "$check:\nKs: $Ke, My_pos: $MyPos, My_neg: $MyNeg, theta_p_pos: $thetaPPos, theta_p_neg: $thetaPNeg, theta_pc: $theta_pc"
+    }
 }
