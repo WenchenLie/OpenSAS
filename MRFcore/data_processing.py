@@ -104,7 +104,7 @@ class DataProcessing:
             * 3: 退出
         """
         self.root_out = Path(output_dir)
-        if self.root == self.root_out:
+        if self.root.resolve() == self.root_out.resolve():
             logger.error('请注意！输出文件夹与原文件夹相同！')
             raise ValueError('【Error】')
         if not Path.exists(self.root_out):
@@ -203,15 +203,16 @@ class DataProcessing:
     def _multithreaded_reading(self, func: Callable, print_result: bool):
         max_workers = min(self.max_workers, self.GM_N)
         with concurrent.futures.ThreadPoolExecutor(max_workers) as executor:
-            futures = [executor.submit(func, gm) for gm in self.GM_names]
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            future_to_gm = {executor.submit(func, gm): gm for gm in self.GM_names}
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_gm)):
+                gm_name = future_to_gm[future]
                 try:
-                    completed_gm = future.result()
+                    future.result()
                     if print_result:
-                        print(f'    已完成 {completed_gm} ({i+1}/{self.GM_N})     \r', end='', flush=True)
+                        print(f'    已完成 {gm_name} ({i+1}/{self.GM_N})     \r', end='', flush=True)
                 except Exception as e:
-                    logger.error(f'读取 {self.GM_names[i]} 时发生错误: {e}')
-                    raise e
+                    logger.error(f'读取 {gm_name} 时发生错误: {e}')
+                    raise
 
     def _read_mode(self, print_result: bool):
         """读取模态结果"""
@@ -250,7 +251,7 @@ class DataProcessing:
             data = np.loadtxt(folder / f'isCollapsed.dat')
             self._mkdir(self.root_out/subfolder)
             np.savetxt(self.root_out/subfolder/'倒塌判断.out', np.array([data]), fmt='%d')
-            t = np.loadtxt(folder/'Time.out')[11:, 0]
+            t = np.loadtxt(folder/'Time.out')[10:, 0]
             t = np.round(t, 6)
             np.savetxt(self.root_out/subfolder/'时间序列.out', t, fmt='%f')
             if self.running_case == 'IDA':
@@ -291,7 +292,7 @@ class DataProcessing:
             np.savetxt(self.root_out/subfolder/'残余层间位移角.out', IDR_res)
             np.savetxt(self.root_out/subfolder/'屋顶层间位移角.out', IDR_roof)
             np.savetxt(self.root_out/subfolder/'DCF.out', max(IDR) / IDR_roof)  # 层间变形集中系数
-            roof_d = pd.read_csv(folder/f'Disp{self.Nstory+1}.out', header=None).to_numpy()[11:, 0]
+            roof_d = pd.read_csv(folder/f'Disp{self.Nstory+1}.out', header=None).to_numpy()[10:, 0]
             np.savetxt(self.root_out/subfolder/'屋顶位移时程(相对).out', roof_d, fmt='%.4f')
             num += 1
             if self.running_case == 'TH':
@@ -382,7 +383,6 @@ class DataProcessing:
                 break
             a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
             PFA = np.zeros(self.Nstory)
-            t = np.loadtxt(folder/'Time.out')[:, 0]  # 计算结果中的时序
             for story in range(1, self.Nstory + 1):
                 data = np.loadtxt(folder / f'RFA{story+1}.out')[10:]  # 楼层相对加速度
                 data += a_base  # 转换为绝对加速度
@@ -405,7 +405,7 @@ class DataProcessing:
         logger.success('完成     ')
 
     @staticmethod
-    def _get_v(a: np.ndarray, t:np.ndarray) -> np.ndarray:
+    def _get_v(a: np.ndarray, t:np.ndarray, a0=0.0, v0=0.0) -> np.ndarray:
         """对加速度序列进行积分，得到速度
 
         Args:
@@ -415,9 +415,19 @@ class DataProcessing:
         Returns:
             np.ndarray: 速度序列
         """
-        if len(t) != len(a):
-            raise ValueError(f'【Error】长度不一致！（{len(a)}, {len(t)}）')
-        return cumulative_trapezoid(a, t, initial=0)
+        a = np.asarray(a, dtype=float)
+        t = np.asarray(t, dtype=float)
+        if a.ndim != 1 or t.ndim != 1 or len(a) != len(t) or len(t) == 0:
+            raise ValueError('加速度与时间应为等长非空一维数组')
+        if not np.all(np.isfinite(a)) or not np.all(np.isfinite(t)):
+            raise ValueError('加速度或时间存在非有限值')
+        if t[0] < 0 or np.any(np.diff(t) < 0):
+            raise ValueError('动力时间应非负且严格递增')
+        if t[0] > 0:
+            a = np.r_[a0, a]
+            t = np.r_[0.0, t]
+            return v0 + cumulative_trapezoid(a, t, initial=0)[1:]
+        return v0 + cumulative_trapezoid(a, t, initial=0)
 
     def _read_PFV_worker(self, gm_name: str):
         num =  1
@@ -428,14 +438,19 @@ class DataProcessing:
             PFV = np.zeros(self.Nstory)
             if not Path.exists(folder):
                 break
+            a_base = np.loadtxt(folder / 'groundmotion.out')  # 基底绝对加速度
+            time = np.loadtxt(folder / 'Time.out')[10:, 0]
+            v_base = self._get_v(a_base, time)  # 基底绝对速度
             for story in range(1, self.Nstory + 1):
                 # 遍历楼层
-                data = np.loadtxt(folder / f'RFV{story+1}.out')
+                data = np.loadtxt(folder / f'RFV{story+1}.out')[10:]
+                data += v_base  # 转换为绝对速度
                 data_max = np.max(np.abs(data))
                 PFV[story - 1] = data_max
             self._mkdir(self.root_out/subfolder)
             np.savetxt(self.root_out/subfolder/'层速度.out', PFV)
-            v_roof = np.loadtxt(folder/f'RFV{self.Nstory+1}.out')[11:]
+            v_roof = np.loadtxt(folder/f'RFV{self.Nstory+1}.out')[10:]
+            v_roof += v_base
             np.savetxt(self.root_out/subfolder/'屋顶速度时程(绝对).out', v_roof)
             num += 1
             if self.running_case == 'TH':
@@ -456,6 +471,7 @@ class DataProcessing:
             folder = self.root / subfolder
             if not Path.exists(folder):
                 break
+            self._mkdir(self.root_out/subfolder)
             hinge_result = np.zeros((self.Nstory, self.Nbay * 2))
             for story in range(1, self.Nstory + 1):
                 # 遍历楼层
@@ -503,6 +519,7 @@ class DataProcessing:
             folder = self.root / subfolder
             if not Path.exists(folder):
                 break
+            self._mkdir(self.root_out/subfolder)
             hinge_result = np.zeros((self.Nstory * 2, self.Nbay + 1))
             for story in range(1, self.Nstory + 2):
                 # 遍历楼层 1-5
@@ -551,6 +568,7 @@ class DataProcessing:
             folder = self.root / subfolder
             if not Path.exists(folder):
                 break
+            self._mkdir(self.root_out/subfolder)
             hinge_result = np.zeros((self.Nstory, self.Nbay + 1))
             for story in range(2, self.Nstory + 2):
                 # 遍历楼层 2-5
@@ -631,7 +649,7 @@ class DataProcessing:
             logger.warning('文件夹中存放的不是pushover分析结果')
             return
         logger.info('正在读取pushover结果...')
-        Time = np.loadtxt(self.root/'pushover/Time.out')[11:]
+        Time = np.loadtxt(self.root/'pushover/Time.out')[10:]
         n = len(Time)
         PO_path = self.root / 'pushover'
         # 侧向力分布模式
@@ -651,7 +669,7 @@ class DataProcessing:
         shear = np.zeros(n)
         for item in PO_path.iterdir():
             if item.is_file() and 'Support' in str(item):
-                shear += np.loadtxt(item)[11:, 0] / 1000  # 剪力单位转换为kN
+                shear += np.loadtxt(item)[10:, 0] / 1000  # 剪力单位转换为kN
         if abs(min(shear[:100])) > abs(max(shear[:100])):
             shear *= -1  # 将推覆方向始终设为正向
         lateral_load = np.zeros((self.Nstory, len(shear)))  # 各楼层的侧向力
@@ -664,11 +682,11 @@ class DataProcessing:
         # 各层位移
         u = np.zeros((self.Nstory, n))
         for i in range(self.Nstory):
-            u[i] = np.loadtxt(self.root/'pushover'/f'Disp{i+2}.out')[11:]
+            u[i] = np.loadtxt(self.root/'pushover'/f'Disp{i+2}.out')[10:]
         # 层间位移角
         IDR = np.zeros((self.Nstory, n))
         for i in range(self.Nstory):
-            IDR[i] = np.loadtxt(self.root/'pushover'/f'SDR{i+1}.out')[11:]
+            IDR[i] = np.loadtxt(self.root/'pushover'/f'SDR{i+1}.out')[10:]
         # 归一化楼层位移角(各层位移除以结构总高)
         FDR = np.zeros((self.Nstory, n))
         for i in range(self.Nstory):
@@ -775,7 +793,7 @@ class DataProcessing:
             return
         logger.info('正在读取cyclic pushover结果...')
         CP_path = self.root / 'Cyclic_pushover'
-        Time = np.loadtxt(CP_path / 'Time.out')[11:]
+        Time = np.loadtxt(CP_path / 'Time.out')[10:]
         n = len(Time)
         # 底部重力
         weight = 0
@@ -787,7 +805,7 @@ class DataProcessing:
         shear = np.zeros(n)
         for item in CP_path.iterdir():
             if item.is_file() and 'Support' in str(item):
-                shear += np.loadtxt(item)[11:, 0] / 1000
+                shear += np.loadtxt(item)[10:, 0] / 1000
         if abs(min(shear[:20])) > abs(max(shear[:20])):
             shear *= -1
         # 倾覆力矩
@@ -801,7 +819,7 @@ class DataProcessing:
             lateral_load[i] = shear * pattern[i]
             overturning_moment += lateral_load[i] * H_[i] / 1000  # kN-m
         # 归一化楼层位移角(各层位移除以结构总高)
-        RDR = np.loadtxt(CP_path / f'SDR_Roof.out')[11:]
+        RDR = np.loadtxt(CP_path / f'SDR_Roof.out')[10:]
         # cyclic pushover滞回曲线
         x_cp = RDR * 100
         y_cp = shear / weight * 100
@@ -867,7 +885,7 @@ class DataProcessing:
         def my_loadtxt(path: Path, array: np.ndarray):
             try:
                 res = np.loadtxt(path)
-            except:
+            except FileNotFoundError:
                 res = array
             return res
         for idx_gm, gm_name in enumerate(self.GM_names):
@@ -917,7 +935,7 @@ class DataProcessing:
         Shear_stat[:, 1] = np.std(Shear, axis=1)
         Shear_stat[:, 2] = np.percentile(Shear, 16, axis=1)
         Shear_stat[:, 3] = np.percentile(Shear, 50, axis=1)
-        Shear_stat[:, 4] = np.percentile(Shear, 80, axis=1)
+        Shear_stat[:, 4] = np.percentile(Shear, 84, axis=1)
         CIDR_stat[:, 0] = np.mean(CIDR, axis=1)
         CIDR_stat[:, 1] = np.std(CIDR, axis=1)
         CIDR_stat[:, 2] = np.percentile(CIDR, 16, axis=1)

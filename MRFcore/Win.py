@@ -591,10 +591,10 @@ class WorkerThread(QThread):
                     collapsed = 1  # 分析完成，倒塌
                 else:
                     collapsed = 0  # 分析完成，未倒塌
-                if result[0] == 2:
+                if result[0] == 3:
                     s = '倒塌' if collapsed else '未倒塌'
                     self.signal_add_warning.emit(f'{gm_name}分析不收敛({s})')
-                elif result[0] == 3:
+                elif result[0] == 4:
                     self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
             Sa = None
             if self.main.method == 'd':
@@ -726,7 +726,7 @@ class WorkerThread(QThread):
                         collapsed = 0
                         self.signal_add_log.emit(f'倒塌：否\n')
                     try:
-                        status = int(np.loadtxt(self.main.Output_dir / gm_name / 'Status.dat'))
+                        status = int(np.loadtxt(self.main.Output_dir / f'{gm_name}_{run_num+1}/Status.dat'))
                     except FileNotFoundError as e:
                         self.signal_add_warning.emit(f'{gm_name}分析失败，请检查模型')
                         raise e
@@ -769,10 +769,10 @@ class WorkerThread(QThread):
                         collapsed = 1  # 分析完成，倒塌
                     else:
                         collapsed = 0  # 分析完成，未倒塌
-                    if result[0] == 2:
+                    if result[0] == 3:
                         s = '倒塌' if collapsed else '未倒塌'
                         self.signal_add_warning.emit(f'{gm_name}分析不收敛({s})')
-                    elif result[0] == 3:
+                    elif result[0] == 4:
                         self.signal_add_warning.emit(f'{gm_name}超过最大分析时间')
                 if not os.path.exists(self.main.Output_dir / f'{gm_name}_{run_num+1}'):
                     os.makedirs(self.main.Output_dir / f'{gm_name}_{run_num+1}')

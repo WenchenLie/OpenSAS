@@ -685,7 +685,8 @@ def run_openseespy(
         totalTime = GMduration + FVduration
         MaxAnalysisDrift = 0.5
         result = TimeHistorySolver(GMdt, totalTime, story_height, MF_FloorNodes, CollapseDrift, MaxAnalysisDrift, GMname, maxRunTime, ShowAnimation)
-        print(f"Running status: {result[0]}")
+        status = result[0]
+        print(f"Running status: {status}")
         print(f"Control time: {result[1]}")
         print(f"Collapse: {bool(result[2])}")
         for i in range(NStory):

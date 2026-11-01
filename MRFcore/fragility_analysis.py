@@ -70,10 +70,15 @@ def get_y(x: list, y: list, x0: float, error: bool=True, x_start_with: float=Non
             raise ValueError(f'【Error】x0 > max(x) ({x0} > {max(x)})')
         else:
             return None
-    x = np.array(x)
+    x = np.asarray(x)
+    y = np.asarray(y)
     if x_start_with is not None:
-        x = x[x >= x_start_with]
+        mask = x >= x_start_with
+        x = x[mask]
+        y = y[mask]
     y0 = []  # 所有交点的横坐标
+    if len(x) == 1 and x[0] == x0:
+        return float(y[0])
     for i in range(len(x) - 1):
         if x[i] == x0:
             y0i = y[i]
@@ -188,9 +193,9 @@ class FragilityAnalysis():
         self.Calc_collapse = False  # 是否有进行倒塌易损性计算
         self.Calc_p = False  # 是否有进行EDP超越概率计算
         self.root = Path(root)
-        self.EDP_types = EDP_types
+        self.EDP_types = list(EDP_types)
         self.collapse_limit = collapse_limit
-        self.additional_items = additional_items
+        self.additional_items = list(additional_items or ())
         if self.additional_items:
             self.EDP_types += self.additional_items
         self.has_risk_data = False  # 是否进行了风险评估
@@ -279,7 +284,7 @@ class FragilityAnalysis():
         """读取结果文件"""
         # 读取数据
         self.data: list[pd.DataFrame] = []  # 包含所有时程结果的最值
-        columns = self.available_EDP_types
+        columns = list(self.available_EDP_types)
         if self.additional_items:
             columns += self.additional_items
         for idx_gm in range(self.GM_N):
@@ -365,12 +370,12 @@ class FragilityAnalysis():
         logger.success('已读取数据')
 
     def calc_IDA(self,
-            EDP_type: str,
-            DM_limit: float=None,
-            DM_display_limit: float=None,
-            density: int=300,
-            marked_idx: int=None
-        ):
+        EDP_type: str,
+        DM_limit: float=None,
+        DM_display_limit: float=None,
+        density: int=300,
+        marked_idx: int=None
+    ):
         """计算IDA曲线
 
         Args:
@@ -864,7 +869,7 @@ class FragilityAnalysis():
             raise KeyError(f'尚未指定`{EDP_type}`类型，请在`__init__`方法的`EDP_types`参数中添加')
         x_EDP = np.linspace(EDP_min, EDP_max, density_EDP)  # IDA曲线横坐标(密集点)
         if fragility_type == 'computed':
-            y_ls = np.zeros((self.GM_N, density))  # IDA曲线纵坐标(密集点)
+            y_ls = np.zeros((self.GM_N, len(x_EDP)))  # IDA曲线纵坐标(密集点)
             for i, df in enumerate(self.data):
                 x_points = [0] + df[EDP_type].to_list()
                 y_points = [0] + df['IM'].to_list()
@@ -872,7 +877,7 @@ class FragilityAnalysis():
                 y_ls[i] = y
             ln_theta = np.median(np.log(y_ls), axis=0)  # 地震动强度中值
             beta = np.std(np.log(y_ls), axis=0, ddof=1)  # 地震动强度标准差
-        gama = np.zeros_like(x_Sa)
+        gama = np.zeros(len(x_EDP))
         log10_HSa = get_log10_harzard_curve(np.log10(x_Sa))  # 灾害曲线的对数
         HSa = np.power(10, log10_HSa)  # 灾害曲线纵坐标
         diff_HSa = np.append(0, np.diff(HSa))  # 灾害曲线的差分
@@ -892,9 +897,14 @@ class FragilityAnalysis():
                 raise ValueError(f'Wrong fragility_type: {fragility_type}')
             gama_i = np.sum(y_cdf * np.abs(diff_HSa))  # 易损性函数乘以灾害曲线的差分
             gama[i] = gama_i
-        P50years = 1 - np.exp(-gama_i * 50)
-        text_risk = f'Risk Evaluation:\nManual probability P[{EDP_type} > {round(x_EDP[-1], 2)}] = {gama_i:.3e}\n'
-        text_risk += f'50 Years Probability P[{EDP_type} > {round(x_EDP[-1], 2)}] = {P50years:.2%}'
+        p1year = -np.expm1(-gama_i)
+        p50years = 1 - np.exp(-gama_i * 50)
+        text_risk = (
+            f'Risk Evaluation:\n'
+            f'Annual frequency [{EDP_type} > {x_EDP[-1]:g}] = {gama_i:.3e}\n'
+            f'1 Year Probability [{EDP_type} > {x_EDP[-1]:g}] = {p1year:.6%}\n'
+            f'50 Years Probability [{EDP_type} > {x_EDP[-1]:g}] = {p50years:.6%}'
+        )
         if not internal_call:
             print(text_risk)
             self.risk_text[EDP_type] = text_risk
@@ -912,7 +922,7 @@ class FragilityAnalysis():
             ax.set_title('Hazard Curve')
             ax.legend()
             ax: Axes = axes[1]
-            ax.plot(x_Sa, y_cdf, label=f'P[{EDP_type} > {round(x_EDP[-1], 2)}]')
+            ax.plot(x_Sa, y_cdf, label=f'P[{EDP_type} > {round(x_EDP[-1], 3)}]')
             ax.set_xlabel('Sa')
             ax.set_ylabel('Probability of Exceedance')
             ax.set_title('Fragility Curve')
@@ -927,7 +937,7 @@ class FragilityAnalysis():
         else:
             # 内部调用的情况，用于进行倒塌易损性评估
             # 返回倒塌强度中值，标准差，年度超越概率和50年超越概率
-            return np.exp(ln_theta_i), beta_i, gama_i, P50years
+            return np.exp(ln_theta_i), beta_i, p1year, p50years
 
 
     def visualization(self):
@@ -935,21 +945,21 @@ class FragilityAnalysis():
         plt.show()
 
     def collapse_evaluation(self,
-            T: float,
-            MCE_spec: Path | str,
-            miuT: float,
-            SF_spec: float=1,
-            beta: list[float] | float=None,
-            SDC: Literal['B', 'C', 'Dmin', 'Dmax', 'other']=None,
-        ):
+        T: float,
+        MCE_spec: Path | str,
+        miuT: float,
+        beta: list[float] | float,
+        SF_spec: float=1,
+        SDC: Literal['B', 'C', 'Dmin', 'Dmax', 'other']=None,
+    ):
         """Collapse assessment based on FEMA P695 and manual probability
 
         Args:
             T (float): 结构周期(T=CuTa，非一阶周期)
             MCE_spec (Path | str): MCE规范谱所在文件路径(文件为两列，一列周期一列谱值)
             miuT (float): Period-based ductility
+            beta: list[float] | float,
             SF_spec (float, optional): 将规范谱的谱值进行放大，默认放大系数为1
-            beta: list[float] | float=None,
             SDC (Literal['B', 'C', 'Dmin', 'Dmax', 'other'], optional): Seismic design category，默认None
 
         注：
@@ -1039,7 +1049,9 @@ class FragilityAnalysis():
         EDP_range = (self.collapse_limit, self.collapse_limit)
         fragility_type = 'computed'
         density = 1000
-        median, std, gama, P50years = self.manual_probability('IDR', Sa_range, EDP_range, hazard_curve, fragility_type, density, internal_call=True, density_EDP=1)
+        median, std, gama, P50years = self.manual_probability('IDR', Sa_range,\
+            EDP_range, hazard_curve, fragility_type, density,\
+                internal_call=True, density_EDP=1)  # 年度超越概率仅考虑βRTR
         print('Collapse assessment based on seismic risk:')
         print(f'P(1 year) = {gama:.3e}')
         print(f'P(50 years) = {P50years:.2%}')

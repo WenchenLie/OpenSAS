@@ -68,9 +68,9 @@ def PanelZone(
     elif type_ == 2:
         ops.node(node_B, X, Y - 0.5 * d_beam)
         ops.node(node_R, X + 0.5 * d_col, Y)
-        if type_ != "L" and type_ != "LT":
+        if position != "L" and position != "LT":
             ops.node(node_L, X - 0.5 * d_col, Y)
-        if type_ != "T" and type_ != "LT" and type_ != "RT":
+        if position != "T" and position != "LT" and position != "RT":
             ops.node(node_T, X, Y + 0.5 * d_beam)
     if type_ == 1:
         ops.node(node_BL, X - 0.5 * d_col, Y - 0.5 * d_beam)

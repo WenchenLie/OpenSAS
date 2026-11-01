@@ -19,9 +19,9 @@ from loguru import logger
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from seismicutils import Records
+from seismokit import spectrum
 
 from .Win import MyWin
-from .spectrum import spectrum
 from ._logger import logger
 
 

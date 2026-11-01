@@ -3,10 +3,13 @@ import numpy as np
 import func
 
 
+E = 206000
+G = E / (2 * (1 + 0.3))
+
 def get_acceptance_criteria(type_, section):
     E = 206000
     fy = 345
-    if type_ == 'beam' or 'column':
+    if type_ in ['beam', 'column']:
         prop = WSection(section)
         bf = prop.bf
         tf = prop.tf
@@ -49,13 +52,10 @@ def get_ductility(type_: str, section: str | None, theta: float, floor: int, PgP
     Returns:
         float: 延性系数
     """
-    E = 206000
     fy = 345
-    G = E / (2 * (1 + 0.3))
-
-    if type_ == 'beam' or 'column':
+    if type_ in ['beam', 'column']:
         prop = WSection(section, fy)
-        
+
         if type_ == 'beam':
             if not L_beam:
                 raise ValueError('【Error】请指定L_beam参数')
@@ -65,6 +65,12 @@ def get_ductility(type_: str, section: str | None, theta: float, floor: int, PgP
             miu = theta / theta_y
 
         elif type_ == 'column':
+            if L_col is None or L_col <= 0:
+                raise ValueError('请指定正的L_col')
+            if PgPye is None or not 0 <= PgPye < 1:
+                raise ValueError('PgPye应在[0,1)内')
+            As = (prop.d - 2*prop.tf) * prop.tw
+            yita = 12 * E * prop.Ix / (L_col**2 * G * As)
             if not PgPye:
                 raise ValueError('【Error】请指定PgPye参数')
             if not L_col:

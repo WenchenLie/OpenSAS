@@ -45,7 +45,7 @@ proc CyclicPushover {CtrlNode RDR_path HBuilding Dincr_init maxRunTime {min_fact
         while {1} {
             if {[expr [clock seconds] - $start_time] >= $maxRunTime} {
                 puts "Exceeding maximum running time"
-                return 3
+                return [list 3 [nodeDisp $CtrlNode 1]]
             }
             algorithm [lindex $ls_algorithm $Id_algorithm]
             integrator DisplacementControl $CtrlNode 1 $Dincr
@@ -71,7 +71,7 @@ proc CyclicPushover {CtrlNode RDR_path HBuilding Dincr_init maxRunTime {min_fact
                     incr Id_algorithm
                     if {$Id_algorithm == 4} {
                         puts "Cannot converge"
-                        return 2
+                        return [list 2 [nodeDisp $CtrlNode 1]]
                     }
                     puts "-- [nodeDisp $CtrlNode 1] ------ Switched algorithm: [lindex $ls_algorithm $Id_algorithm]"
                 }

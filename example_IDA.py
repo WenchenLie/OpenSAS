@@ -15,7 +15,7 @@ if __name__ == "__main__":
     model.select_ground_motions([f'th{i}' for i in range(1, 45)], suffix='.th')
     T1 = 1.242
     model.set_running_parameters(Output_dir=output_folder, fv_duration=0, display=True, auto_quit=False)
-    model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=22, print_result=False)
+    model.run_IDA(T1, 0.2, 0.2, 0.02, max_ana=80, parallel=22, print_result=False, p_cores=list(range(16)))
 
 
     # 2. Read results

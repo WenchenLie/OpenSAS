@@ -3,5 +3,33 @@ name = "opensas"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = []
+# Windows: OpenSeesPy uses Python 3.12; OriginExt currently supplies wheels
+# through Python 3.13. Keep the supported interpreter range explicit.
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "loguru>=0.7",
+    "matplotlib>=3.9",
+    "numpy>=1.26",
+    "openpyxl>=3.1",
+    "originpro>=1.1.15; sys_platform == 'win32'",
+    "pandas>=2.2",
+    "psutil>=6",
+    "PyQt5>=5.15.11",
+    "requests>=2.32",
+    "scipy>=1.14",
+    "seismicutils>=1.0.0",
+    "seismokit>=0.1.0",
+    "wsection>=2.0.2",
+]
+
+[project.optional-dependencies]
+# On Windows, install this extra with Python 3.12 (see README).
+opensees = [
+    "openseespy>=3.8.0.0,<3.9",
+]
+
+[tool.uv]
+# Do not lock Qt/native packages that have no Windows x64 wheel.
+required-environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]

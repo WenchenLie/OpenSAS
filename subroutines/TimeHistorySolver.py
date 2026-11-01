@@ -59,35 +59,34 @@ def TimeHistorySolver(
     SDR_roof = [0] * 10
     collapseTime = 60
     collapseStart = 0
+    collapse_flag = False
+    max_ana_flag = False
     while True:
         if time.time() - start_time > maxRunTime:
             print("Exceeding maximum running time")
-            return 3, ops.getTime(), collapse_flag, SDRs, SDR_roof
+            return 4, ops.getTime(), collapse_flag, SDRs, SDR_roof
         if collapse_flag and time.time() - collapseStart > collapseTime:
             return 2, ops.getTime(), collapse_flag, SDRs, SDR_roof
         ok = ops.analyze(1, dt)
         if ok == 0:
-            collapse_flag, maxAna_flag, SDRs_i, SDR_roof_i = SDR_tester(
+            collapse, max_ana, SDRs_i, SDR_roof_i = SDR_tester(
                 story_heights, ctrl_nodes, CollapseDrift, MaxAnalysisDrift, GMname)
+            collapse_flag = any([collapse_flag, collapse])
+            max_ana_flag = any([max_ana_flag, max_ana])
             if collapse_flag and collapseStart == 0:
                 collapseStart = time.time()
-            try:
-                SDRs = np.vstack((SDRs, SDRs_i))
-            except:
-                print(SDRs)
-                print(SDRs_i)
-                raise ValueError()
+            SDRs = np.vstack((SDRs, SDRs_i))
             SDR_roof.append(SDR_roof_i)
             if ops.getTime() >= duration:
                 print("Analysis finished")
                 # if ShowAnimation:
                 #     plt.ioff()
                 return 1, ops.getTime(), collapse_flag, SDRs, SDR_roof
-            if maxAna_flag:
+            if max_ana_flag:
                 print("Analysis finished, the structure collapsed")
                 # if ShowAnimation:
                 #     plt.ioff()
-                return 1, ops.getTime(), collapse_flag, SDRs, SDR_roof
+                return 2, ops.getTime(), collapse_flag, SDRs, SDR_roof
             if collapse_flag and print_collapse:
                 print("The structure was collapse")
                 print_collapse = False
@@ -108,7 +107,7 @@ def TimeHistorySolver(
                 algorithm_id += 1
                 if algorithm_id == 4:
                     print("Cannot converge")
-                    return 2, ops.getTime(), collapse_flag, SDRs, SDR_roof
+                    return 3, ops.getTime(), collapse_flag, SDRs, SDR_roof
                 print(f"-------- Switched algorithm:", *algorithms[algorithm_id], f'Time: {ops.getTime()}')
             print(f"---- Reduced factor: {factor}, Time: {ops.getTime()}")
         dt = dt_init * factor
@@ -128,10 +127,9 @@ def SDR_tester(story_heights: list, ctrl_nodes: list,
     """
     if CollapseDrift > MaxAnalysisDrift:
         raise ValueError('`MaxAnalysisDrift` should be larger than `CollapseDrift`')
-
     SDRs = []
     SDR_roof = ops.nodeDisp(ctrl_nodes[len(story_heights) - 1])[0] / sum(story_heights)
-    collapse = (False, False)
+    collapse, max_ana = False, False
     for i, h in enumerate(story_heights):
         if i == 0:
             disp_b = 0
@@ -141,17 +139,11 @@ def SDR_tester(story_heights: list, ctrl_nodes: list,
             disp_t = ops.nodeDisp(ctrl_nodes[i])[0]
         SDR = (disp_t - disp_b) / h
         SDRs.append(SDR)
-        if SDR >= MaxAnalysisDrift:
-            collapse = (True, True)  # TODO
-        if SDR >= CollapseDrift:
-            collapse = (True, False)  # TODO 这两个if应调换
-    return *(collapse), SDRs, SDR_roof
-
-
-
-
-if __name__ == "__main__":
-    t = ops.getTime()
+        if abs(SDR) >= MaxAnalysisDrift:
+            max_ana = True
+        if abs(SDR) >= CollapseDrift:
+            collapse = True
+    return collapse, max_ana, SDRs, SDR_roof
 
 
 

@@ -60,6 +60,6 @@ def get_SFF(T: float, miuT: float, SDC: Literal['B', 'C', 'Dmin', 'Dmax', 'other
     if miuT > 8.0: miuT = 8.0
     T_values = sff_table.index.values
     muT_values = sff_table.columns.values
-    interpolator = RegularGridInterpolator((T_values, muT_values), SSF_TABLE_1.values)
+    interpolator = RegularGridInterpolator((T_values, muT_values), sff_table.values)
     result = float(interpolator((T, miuT)))
     return result

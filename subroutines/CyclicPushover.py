@@ -58,7 +58,7 @@ def CyclicPushover(
         while True:
             if time.time() - start_time >= maxRunTime:
                 print("Exceeding maximum running time")
-                return 3
+                return [3, ops.nodeDisp(CtrlNode, 1)]
             ops.algorithm(ls_algorithm[Id_algorithm])
             ops.integrator("DisplacementControl", CtrlNode, 1, Dincr)
             ok = ops.analyze(1)
@@ -80,12 +80,12 @@ def CyclicPushover(
                     Id_algorithm += 1
                     if Id_algorithm == 4:
                         print("Cannot converge")
-                        return 2
+                        return [2, ops.nodeDisp(CtrlNode, 1)]
                     print(f"-- {ops.nodeDisp(CtrlNode, 1)} ------ Switched algorithm: {ls_algorithm[Id_algorithm]}")
                 print(f"-- {ops.nodeDisp(CtrlNode, 1)} -- Reduced factor: {factor}")
             Dincr = direction * factor * Dincr_init
         # Analysis finished
         print(f"RDR = {RDR} finished")
 
-    return 1
+    return [1, ops.nodeDisp(CtrlNode, 1)]
 

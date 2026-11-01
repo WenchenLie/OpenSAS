@@ -36,15 +36,15 @@ proc ColumnHinge {SpringID NodeI NodeJ E Ix d htw ry L Lb My PPy SF_PPy type_ {c
 
     set K [expr ($n+1.0) * 6 * $E * $Ix / $L];
 
-    set theta_p [expr 294.0 * pow(($htw),-1.700) * pow(($Lb/$ry),-0.700) * pow((1-$PPy),1.600)];  # Eq. (7), [1]
-    set theta_pc [expr 90.0 * pow(($htw),-0.800) * pow(($Lb/$ry),-0.800) * pow((1-$PPy),2.500)];  # Eq. (9), [1]
+    set theta_p [expr 294.0 * pow(($htw),-1.700) * pow((double($Lb)/$ry),-0.700) * pow((1-$PPy),1.600)];  # Eq. (7), [1]
+    set theta_pc [expr 90.0 * pow(($htw),-0.800) * pow((double($Lb)/$ry),-0.800) * pow((1-$PPy),2.500)];  # Eq. (9), [1]
     if {$theta_p > 0.20} {set theta_p 0.2}
     if {$theta_pc > 0.30} {set theta_pc 0.3}
 
     if {$PPy <= 0.35} {
-        set Lamda [expr 25500. * pow(($htw),-2.140) * pow(($Lb/$ry),-0.530) * pow((1-$PPy),4.920)];
+        set Lamda [expr 25500. * pow(($htw),-2.140) * pow((double($Lb)/$ry),-0.530) * pow((1-$PPy),4.920)];
     } else {
-        set Lamda [expr 268000. * pow(($htw),-2.300) * pow(($Lb/$ry),-1.300) * pow((1-$PPy),1.190)];	
+        set Lamda [expr 268000. * pow(($htw),-2.300) * pow((double($Lb)/$ry),-1.300) * pow((1-$PPy),1.190)];	
     }
     if {$Lamda < 3.0} {set Lamda 3.0}
 
@@ -54,7 +54,7 @@ proc ColumnHinge {SpringID NodeI NodeJ E Ix d htw ry L Lb My PPy SF_PPy type_ {c
         set My [expr (1.15/1.1)*$My*(9.0/8.0)*(1-$PPy)];
     };  # Eq. (2), [1]
 
-    set McMy [expr 12.5 * pow(($htw),-0.200) * pow(($Lb/$ry),-0.400) * pow((1-$PPy),0.400)];  # Eq. (3), [1]
+    set McMy [expr 12.5 * pow(($htw),-0.200) * pow((double($Lb)/$ry),-0.400) * pow((1-$PPy),0.400)];  # Eq. (3), [1]
     if {$McMy < 1.0} {set McMy 1.0}
     if {$McMy > 1.3} {set McMy 1.3}
 

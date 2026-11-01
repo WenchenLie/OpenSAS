@@ -43,19 +43,19 @@ proc BeamHinge {SpringID NodeI NodeJ E fy Ix d htw bftf ry L Ls Lb My type_ {che
     set McMy 1.1;
     if {$type_ == 1} {
         # RBS hinge
-        set theta_p [expr 0.19 * pow(($htw), -0.314) * pow(($bftf), -0.100) * pow(($Lb/$ry), -0.185) * pow(($Ls/$d), 0.113) * pow(($c1 * $d/533), -0.760) * pow(($c2 * $fy / 355), -0.070)];  # Eq. (9), [1]
-        set theta_pc [expr 9.52 * pow(($htw), -0.513) * pow(($bftf), -0.863) * pow(($Lb/$ry), -0.108) * pow(($c2 * $fy / 355), -0.360)];  # Eq. (12), [1]
-        set Lamda [expr 585  * pow(($htw), -1.140) * pow(($bftf), -0.632) * pow(($Lb/$ry), -0.205) * pow(($c2 * $fy / 355), -0.391)];  # Eq. (15), [1]
+        set theta_p [expr 0.19 * pow(($htw), -0.314) * pow(($bftf), -0.100) * pow((double($Lb)/$ry), -0.185) * pow((double($Ls)/$d), 0.113) * pow((double($c1) * double($d)/533), -0.760) * pow((double($c2) * double($fy) / 355), -0.070)];  # Eq. (9), [1]
+        set theta_pc [expr 9.52 * pow(($htw), -0.513) * pow(($bftf), -0.863) * pow((double($Lb)/$ry), -0.108) * pow((double($c2) * double($fy) / 355), -0.360)];  # Eq. (12), [1]
+        set Lamda [expr 585  * pow(($htw), -1.140) * pow(($bftf), -0.632) * pow((double($Lb)/$ry), -0.205) * pow((double($c2) * double($fy) / 355), -0.391)];  # Eq. (15), [1]
     } elseif {$type_ == 2} {
         # Other than RBS section
         if {$d >= 533.0} {
-            set theta_p [expr 0.318 * pow(($htw),-0.550) * pow(($bftf),-0.345) * pow(($Lb/$ry),-0.023) * pow(($Ls/$d),0.090) * pow(($c1 * $d/533),-0.330) * pow(($c2 * $fy / 355),-0.130)];  # Eq. (8), [1]
-            set theta_pc [expr 7.500 * pow(($htw),-0.610) * pow(($bftf),-0.710) * pow(($Lb/$ry),-0.110) * pow(($c1 * $d/533),-0.161) * pow(($c2 * $fy / 355),-0.320)];  # Eq. (11), [1]
-            set Lamda [expr 536 * pow(($htw),-1.260) * pow(($bftf),-0.525) * pow(($Lb/$ry),-0.130) * pow(($c2 * $fy / 355),-0.291)];  # Eq. (14), [1]
+            set theta_p [expr 0.318 * pow(($htw),-0.550) * pow(($bftf),-0.345) * pow((double($Lb)/$ry),-0.023) * pow((double($Ls)/$d),0.090) * pow((double($c1) * double($d)/533),-0.330) * pow((double($c2) * double($fy) / 355),-0.130)];  # Eq. (8), [1]
+            set theta_pc [expr 7.500 * pow(($htw),-0.610) * pow(($bftf),-0.710) * pow((double($Lb)/$ry),-0.110) * pow((double($c1) * double($d)/533),-0.161) * pow((double($c2) * double($fy) / 355),-0.320)];  # Eq. (11), [1]
+            set Lamda [expr 536 * pow(($htw),-1.260) * pow(($bftf),-0.525) * pow((double($Lb)/$ry),-0.130) * pow((double($c2) * double($fy) / 355),-0.291)];  # Eq. (14), [1]
         } else {
-            set theta_p [expr 0.0865 * pow(($htw),-0.360) * pow(($bftf),-0.140) * pow(($Ls/$d),0.340) * pow(($c1 * $d/533),-0.721) * pow(($c2 * $fy /355),-0.230)];  # Eq. (7), [1]
-            set theta_pc [expr 5.6300 * pow(($htw),-0.565) * pow(($bftf),-0.800) * pow(($c1 * $d/533),-0.280) * pow(($c2 * $fy /355),-0.430)];  # Eq. (10), [1]
-            set Lamda [expr 495 * pow(($htw),-1.340) * pow(($bftf),-0.595) * pow(($c2 * $fy /355),-0.360)];  # Eq. (13), [1]
+            set theta_p [expr 0.0865 * pow(($htw),-0.360) * pow(($bftf),-0.140) * pow((double($Ls)/$d),0.340) * pow((double($c1) * double($d)/533),-0.721) * pow((double($c2) * double($fy) /355),-0.230)];  # Eq. (7), [1]
+            set theta_pc [expr 5.6300 * pow(($htw),-0.565) * pow(($bftf),-0.800) * pow((double($c1) * double($d)/533),-0.280) * pow((double($c2) * double($fy) /355),-0.430)];  # Eq. (10), [1]
+            set Lamda [expr 495 * pow(($htw),-1.340) * pow(($bftf),-0.595) * pow((double($c2) * double($fy) /355),-0.360)];  # Eq. (13), [1]
         }
     }
 

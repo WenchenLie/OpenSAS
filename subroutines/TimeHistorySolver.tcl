@@ -43,6 +43,8 @@ proc TimeHistorySolver {
     set dt $dt_init;
     set collapseTime 60.0;
     set collapseStart 0;
+    set collapse_flag 0
+    set max_ana_flag 0
     while {1} {
         # puts [eleResponse 10020109 deformation]
         if {[expr [clock seconds] - $start_time] >= $maxRunTime} {
@@ -55,15 +57,17 @@ proc TimeHistorySolver {
         set ok [analyze 1 $dt];
         if {$ok == 0} {
             # Current step converged successfully
+            set test_result [SDR_tester $story_heights $ctrl_nodes $CollapseDrift $MaxAnalysisDrift $GMname $temp]
+            set collapse [lindex $test_result 0]
+            set max_ana [lindex $test_result 1]
+            if {$collapse == 1 || $collapse_flag == 1} {set collapse_flag 1}
+            if {$max_ana == 1 || $max_ana_flag == 1} {set max_ana_flag 1}
             if {[getTime] >= $duration} {
                 puts "Analysis finished";
                 return [list 1 [getTime]];
             }
-            set test_result [SDR_tester $story_heights $ctrl_nodes $CollapseDrift $MaxAnalysisDrift $GMname $temp]
-            set collapse_flag [lindex $test_result 0]
-            set maxAna_flag [lindex $test_result 1]
             if {$collapse_flag == 1 && $collapseStart == 0} {set collapseStart [clock seconds]}
-            if {$maxAna_flag} {
+            if {$max_ana_flag} {
                 puts "Analysis finished, the structure collapsed"
                 return [list 2 [getTime]]
             }
@@ -107,7 +111,8 @@ proc SDR_tester {story_heights ctrl_nodes CollapseDrift MaxAnalysisDrift GMname 
     if {$CollapseDrift > $MaxAnalysisDrift} {
         error "`MaxAnalysisDrift` should be larger than `CollapseDrift`"
     }
-
+    set collapse 0
+    set max_ana 0
     for {set i 0} {$i < [llength $story_heights]} {incr i} {
         set h [lindex $story_heights $i]
         if {$i == 0} {
@@ -117,16 +122,14 @@ proc SDR_tester {story_heights ctrl_nodes CollapseDrift MaxAnalysisDrift GMname 
             set disp_b [lindex [nodeDisp [lindex $ctrl_nodes [expr {$i - 1}]]] 0]
             set disp_t [lindex [nodeDisp [lindex $ctrl_nodes $i]] 0]
         }
-        set SDR [expr {abs($disp_t - $disp_b) / $h}]
-        if {$SDR >= $MaxAnalysisDrift} {
-            return [list 1 1]
-        }
-        if {$SDR >= $CollapseDrift} {
+        set SDR [expr {($disp_t - $disp_b) / $h}]
+        if {abs($SDR) >= $MaxAnalysisDrift} {set max_ana 1}
+        if {abs($SDR) >= $CollapseDrift} {
             set f [open "$temp/${GMname}_CollapseState.txt" w]
             puts $f "1"
             close $f
-            return [list 1 0]
+            set collapse 1
         }
     }
-    return [list 0 0]
+    return [list $collapse $max_ana]
 }
