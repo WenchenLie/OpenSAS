@@ -1,0 +1,5 @@
+{
+    "code-runner.executorMap": {
+        "python": "uv run python -u"
+    }
+}

@@ -57,7 +57,7 @@ class DataProcessing:
             self.notes = f.read()
         with open(self.root / 'running_case.dat', 'r') as f:
             self.running_case = f.read()
-        self.heights = np.loadtxt(self.root/'heights.dat')  # 层高
+        self.heights = np.loadtxt(self.root/'heights.dat', ndmin=1)  # 层高；兼容单层模型
         error_dir = []
         error_Sa = []
         for gm_name in self.GM_names:
@@ -653,7 +653,7 @@ class DataProcessing:
         n = len(Time)
         PO_path = self.root / 'pushover'
         # 侧向力分布模式
-        pattern = np.loadtxt(self.root/'pushover/Pattern.out')
+        pattern = np.loadtxt(self.root/'pushover/Pattern.out', ndmin=1)
         pattern = pattern / np.sum(pattern)  # 归一化
         # 底部重力
         has_weight = False
@@ -809,7 +809,7 @@ class DataProcessing:
         if abs(min(shear[:20])) > abs(max(shear[:20])):
             shear *= -1
         # 倾覆力矩
-        pattern = np.loadtxt(self.root/'Cyclic_pushover/Pattern.out')
+        pattern = np.loadtxt(self.root/'Cyclic_pushover/Pattern.out', ndmin=1)
         pattern = pattern / np.sum(pattern)  # 归一化
         lateral_load = np.zeros((self.Nstory, len(shear)))  # 各楼层的侧向力
         overturning_moment = np.zeros_like(shear)  # 底部倾覆力矩(kN-m)

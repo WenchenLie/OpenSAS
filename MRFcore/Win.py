@@ -956,7 +956,7 @@ class WorkerThread(QThread):
             GMFile = self.main.dir_gm / f'{gm_name}{self.main.suffix}'
             maxRoofDrift = self.main.maxRoofDrift
             paras = [maxRunTime, analysis_type, ShowAnimation, MPCO, MainFolder, GMname, SubFolder,
-                        GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, None]
+                        GMdt, GMpoints, GMduration, FVduration, EqSF, GMFile, maxRoofDrift, None, None]
             self.signal_send_openseespy_paras.emit(paras)
             result = run_openseespy(*paras)
             if result[0] == 2:

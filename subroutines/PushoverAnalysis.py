@@ -4,11 +4,15 @@ import time
 
 
 def PushoverAnalysis(
-        CtrlNodes: list, story_heights: list,
-        Dmax: float, Dincr_init: float, maxRunTime: float,
-        ShowAnimation: bool,
-        min_factor: float=1e-6, max_factor: float=1
-    ) -> tuple[int, float, np.ndarray, list[float]]:
+    CtrlNodes: list,
+    story_heights: list,
+    Dmax: float,
+    Dincr_init: float,
+    maxRunTime: float,
+    ShowAnimation: bool,
+    min_factor: float=1e-6,
+    max_factor: float=1
+) -> tuple[int, float, np.ndarray, list[float]]:
 
     CtrlNode = CtrlNodes[-1]
     ops.wipeAnalysis()
